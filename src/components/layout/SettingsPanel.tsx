@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { describeProgress, supportsDirectoryExport, useBatchExport } from '../../hooks/useBatchExport';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
-import { BUILTIN_PRESETS, findPreset, isBuiltinPreset } from '../../lib/presets';
+import { findPreset, isBuiltinPreset, orderedPresets } from '../../lib/presets';
 import type { Preset, QueueItem } from '../../lib/types';
 import { getItemPreset } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
@@ -32,22 +32,12 @@ const PresetSelect = ({ value, presets, onChange, onManage }: PresetSelectProps)
     </label>
     <div className="relative min-w-0 flex-1">
       <select id="preset-select" value={value} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, 'appearance-none pr-8 font-medium')}>
-        <optgroup label={t.settings.builtIn}>
-          {BUILTIN_PRESETS.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {presetLabel(preset)}
-            </option>
-          ))}
-        </optgroup>
-        {presets.length > 0 ? (
-          <optgroup label={t.settings.yours}>
-            {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
+        {/* One list in the order set in Manage presets. */}
+        {presets.map((preset) => (
+          <option key={preset.id} value={preset.id}>
+            {presetLabel(preset)}
+          </option>
+        ))}
       </select>
       <Icon name="chevronDown" className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-ink-3" />
     </div>
@@ -142,7 +132,7 @@ export const SettingsForm = () => {
       <div className="space-y-2">
         <PresetSelect
           value={presetId}
-          presets={state.presets}
+          presets={orderedPresets(state.presets, state.presetOrder)}
           onManage={() => setManagerOpen(true)}
           onChange={(id) => {
             if (selectedItem) dispatch({ type: 'setItemPreset', id: selectedItem.id, presetId: id });

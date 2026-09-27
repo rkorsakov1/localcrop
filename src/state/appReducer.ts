@@ -1,15 +1,22 @@
-import { IDENTITY_TRANSFORM } from '../lib/cropMath';
-import { BUILTIN_PRESETS, effectiveOverrides, findPreset, isBuiltinPreset, resolvePreset, uniquePresetName } from '../lib/presets';
+import { adaptCropToAspect, computeAutoCrop, IDENTITY_TRANSFORM, targetAspect, transformedSize } from '../lib/cropMath';
+import { BUILTIN_PRESETS, effectiveOverrides, findPreset, isBuiltinPreset, orderedPresets, resolvePreset, uniquePresetName } from '../lib/presets';
 import type { CropRect, Cutout, EncodedOutput, Preset, QueueItem, Transform } from '../lib/types';
 import type { Language } from '../i18n';
+import type { FillMethod } from '../worker/protocol';
 import { EMPTY_HISTORY, type History } from './history';
 
 export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
 
 export type Theme = 'system' | 'light' | 'dark';
 
-/** `lifetime`: bytes saved and images exported across all sessions in this browser. */
-export type Prefs = { showThirds: boolean; theme: Theme; language: Language; lifetime: { bytes: number; count: number } };
+/** `lifetime`: bytes saved and images exported across all sessions in this browser. `fillMethod`: the last retouch fill used. */
+export type Prefs = {
+  showThirds: boolean;
+  theme: Theme;
+  language: Language;
+  lifetime: { bytes: number; count: number };
+  fillMethod: FillMethod;
+};
 
 export type Notice = {
   id: string;
@@ -23,8 +30,10 @@ export type Notice = {
 };
 
 export type AppState = {
-  /** User presets, in display order. Built-ins live in BUILTIN_PRESETS. */
+  /** User presets. Built-ins live in BUILTIN_PRESETS. */
   presets: Preset[];
+  /** Display order of built-in and user presets together (ids); see orderedPresets. */
+  presetOrder: string[];
   /** Preset given to newly added images; the last one the user picked. */
   lastPresetId: string;
   items: QueueItem[];
@@ -43,6 +52,7 @@ export type NewItem = Pick<QueueItem, 'id' | 'sourceName' | 'sourceBytes' | 'sou
 export type AppAction =
   | { type: 'addItems'; items: NewItem[] }
   | { type: 'removeItem'; id: string }
+  | { type: 'renameItem'; id: string; name: string }
   | { type: 'selectItem'; id: string }
   | { type: 'selectRelative'; offset: 1 | -1 }
   | { type: 'setMode'; mode: Mode }
@@ -62,7 +72,8 @@ export type AppAction =
   | { type: 'encodeCancelled'; id: string; revision: number }
   | { type: 'upsertPreset'; preset: Preset }
   | { type: 'deletePreset'; id: string }
-  | { type: 'movePreset'; id: string; offset: 1 | -1 }
+  /** Moves a preset to `index` in the combined (built-in + user) list. */
+  | { type: 'movePreset'; id: string; index: number }
   | { type: 'replacePresets'; presets: Preset[] }
   | { type: 'setPref'; patch: Partial<Prefs> }
   | { type: 'addSavings'; before: number; after: number; count: number }
@@ -72,8 +83,9 @@ export type AppAction =
 
 export const DEFAULT_PRESET_ID = (BUILTIN_PRESETS[0] as Preset).id;
 
-export const createInitialState = (persisted: { presets: Preset[]; lastPresetId: string; prefs: Prefs }): AppState => ({
+export const createInitialState = (persisted: { presets: Preset[]; presetOrder: string[]; lastPresetId: string; prefs: Prefs }): AppState => ({
   presets: persisted.presets,
+  presetOrder: persisted.presetOrder,
   lastPresetId: persisted.lastPresetId,
   items: [],
   selectedId: null,
@@ -98,6 +110,28 @@ const bump = (item: QueueItem): QueueItem => ({ ...item, revision: item.revision
 
 const aspectChanged = (before: Preset, after: Preset): boolean =>
   CROP_AFFECTING.some((key) => before[key] !== after[key]);
+
+/** Contain mode shows the whole image; every other mode uses the crop. */
+const usesCrop = (preset: Preset): boolean => !(preset.fit === 'contain' && preset.width !== null && preset.height !== null);
+
+/**
+ * The item's crop after its settings change from `before` to `after`. The selection stays where
+ * it is: unlinking W × H keeps the current box, and a new ratio reshapes it around its center.
+ * An automatic (never adjusted) crop stays automatic when the new settings would center it anyway.
+ */
+export const cropAfterSettingsChange = (item: QueueItem, before: Preset, after: Preset): CropRect | null => {
+  if (!aspectChanged(before, after) || !usesCrop(after)) return item.crop;
+  const image = transformedSize(item.editedBitmap ?? item.sourceBitmap, item.transform.rotation);
+  const beforeAspect = usesCrop(before) ? targetAspect(before) : null;
+  const afterAspect = targetAspect(after);
+  if (afterAspect === null) {
+    // Free or one-sided size: keep what was on screen, unless that was the whole image anyway.
+    if (item.crop || !usesCrop(before) || beforeAspect === null) return item.crop;
+    return computeAutoCrop(image, beforeAspect);
+  }
+  if (beforeAspect !== null && Math.abs(beforeAspect - afterAspect) < 1e-9) return item.crop;
+  return item.crop ? adaptCropToAspect(item.crop, afterAspect, image) : null;
+};
 
 export const getItemPreset = (state: Pick<AppState, 'presets'>, item: QueueItem): Preset =>
   resolvePreset(findPreset(state.presets, item.presetId), item.overrides);
@@ -141,6 +175,13 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       return { ...state, items, selectedId };
     }
 
+    case 'renameItem': {
+      const name = action.name.trim();
+      if (!name) return state;
+      // The name feeds {name} in the filename template; the output itself is unchanged.
+      return updateItem(state, action.id, (item) => (item.sourceName === name ? item : { ...item, sourceName: name }));
+    }
+
     case 'selectItem':
       return { ...state, selectedId: action.id };
 
@@ -161,7 +202,10 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       return updateItem(state, action.id, (item) => bump({ ...item, transform: action.transform, crop: null }));
 
     case 'setItemPreset': {
-      const next = updateItem(state, action.id, (item) => bump({ ...item, presetId: action.presetId, overrides: {}, crop: null }));
+      const after = findPreset(state.presets, action.presetId);
+      const next = updateItem(state, action.id, (item) =>
+        bump({ ...item, presetId: action.presetId, overrides: {}, crop: cropAfterSettingsChange(item, getItemPreset(state, item), after) }),
+      );
       return { ...next, lastPresetId: action.presetId };
     }
 
@@ -169,7 +213,9 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         lastPresetId: action.presetId,
-        items: state.items.map((item) => bump({ ...item, presetId: action.presetId, overrides: {}, crop: null })),
+        items: state.items.map((item) =>
+          bump({ ...item, presetId: action.presetId, overrides: {}, crop: cropAfterSettingsChange(item, getItemPreset(state, item), findPreset(state.presets, action.presetId)) }),
+        ),
       };
 
     case 'setOverrides':
@@ -178,24 +224,30 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         const base = findPreset(state.presets, item.presetId);
         const overrides = effectiveOverrides(base, { ...item.overrides, ...action.patch });
         const after = resolvePreset(base, overrides);
-        return bump({ ...item, overrides, crop: aspectChanged(before, after) ? null : item.crop });
+        return bump({ ...item, overrides, crop: cropAfterSettingsChange(item, before, after) });
       });
 
     case 'resetOverrides':
       return updateItem(state, action.id, (item) => {
         const before = getItemPreset(state, item);
         const after = findPreset(state.presets, item.presetId);
-        return bump({ ...item, overrides: {}, crop: aspectChanged(before, after) ? null : item.crop });
+        return bump({ ...item, overrides: {}, crop: cropAfterSettingsChange(item, before, after) });
       });
 
     case 'saveOverridesToPreset': {
       const item = state.items.find((candidate) => candidate.id === action.id);
       if (!item || isBuiltinPreset(item.presetId)) return state;
       const resolved = getItemPreset(state, item);
+      const next = { ...state, presets: state.presets.map((preset) => (preset.id === resolved.id ? resolved : preset)) };
       return {
-        ...state,
-        presets: state.presets.map((preset) => (preset.id === resolved.id ? resolved : preset)),
-        items: state.items.map((candidate) => (candidate.id === item.id ? { ...candidate, overrides: {} } : candidate)),
+        ...next,
+        items: state.items.map((candidate) => {
+          if (candidate.id === item.id) return { ...candidate, overrides: {} };
+          if (candidate.presetId !== item.presetId) return candidate;
+          // Other images on this preset pick up the saved settings.
+          const updated = { ...candidate, crop: cropAfterSettingsChange(candidate, getItemPreset(state, candidate), getItemPreset(next, candidate)) };
+          return bump(updated);
+        }),
       };
     }
 
@@ -247,10 +299,13 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       const presets = exists
         ? state.presets.map((preset) => (preset.id === action.preset.id ? action.preset : preset))
         : [...state.presets, action.preset];
+      const next = { ...state, presets };
       return {
-        ...state,
-        presets,
-        items: state.items.map((item) => (item.presetId === action.preset.id ? bump(item) : item)),
+        ...next,
+        // Other images using this preset keep their selection, reshaped if the ratio changed.
+        items: state.items.map((item) =>
+          item.presetId === action.preset.id ? bump({ ...item, crop: cropAfterSettingsChange(item, getItemPreset(state, item), getItemPreset(next, item)) }) : item,
+        ),
       };
     }
 
@@ -261,19 +316,21 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         presets,
         lastPresetId: state.lastPresetId === action.id ? DEFAULT_PRESET_ID : state.lastPresetId,
         items: state.items.map((item) =>
-          item.presetId === action.id ? bump({ ...item, presetId: DEFAULT_PRESET_ID, overrides: {}, crop: null }) : item,
+          item.presetId === action.id
+            ? bump({ ...item, presetId: DEFAULT_PRESET_ID, overrides: {}, crop: cropAfterSettingsChange(item, getItemPreset(state, item), findPreset(presets, DEFAULT_PRESET_ID)) })
+            : item,
         ),
       };
     }
 
     case 'movePreset': {
-      const index = state.presets.findIndex((preset) => preset.id === action.id);
-      const target = index + action.offset;
-      if (index === -1 || target < 0 || target >= state.presets.length) return state;
-      const presets = [...state.presets];
-      const [moved] = presets.splice(index, 1);
-      presets.splice(target, 0, moved as Preset);
-      return { ...state, presets };
+      const ids = orderedPresets(state.presets, state.presetOrder).map((preset) => preset.id);
+      const from = ids.indexOf(action.id);
+      const to = Math.min(ids.length - 1, Math.max(0, action.index));
+      if (from === -1 || from === to) return state;
+      ids.splice(from, 1);
+      ids.splice(to, 0, action.id);
+      return { ...state, presetOrder: ids };
     }
 
     case 'replacePresets':

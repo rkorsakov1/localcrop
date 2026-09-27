@@ -95,20 +95,21 @@ const strokeRegion = (rect: Rect, image: { width: number; height: number }): Rec
 const methodOptions = (): { value: FillMethod; label: string; title: string }[] => {
   const r = messages().retouch;
   return [
-    { value: 'smooth', label: r.smooth, title: r.smoothTitle },
     { value: 'flat', label: r.flat, title: r.flatTitle },
+    { value: 'smooth', label: r.smooth, title: r.smoothTitle },
   ];
 };
 
 /** Retouch mode: every stroke is filled from its surroundings as soon as it ends. Each stroke is one undo step. */
 export const RetouchPanel = ({ item }: { item: QueueItem }) => {
-  const { editor, notify, dispatch, setEdit } = useApp();
+  const { state, editor, notify, dispatch, setEdit } = useApp();
   const t = useT();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const mask = useMemo(() => createMaskCanvas(bitmap.width, bitmap.height), [bitmap.width, bitmap.height]);
   const [version, setVersion] = useState(0);
   const [brush, setBrush] = useState<BrushSettings>(() => ({ size: defaultBrushSize(bitmap), erase: false, soft: false }));
-  const [method, setMethod] = useState<FillMethod>('smooth');
+  const method = state.prefs.fillMethod;
+  const setMethod = (fillMethod: FillMethod) => dispatch({ type: 'setPref', patch: { fillMethod } });
   const [flatColor, setFlatColor] = useState<RGB | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -245,6 +246,7 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
           onStrokeEnd={handleStrokeEnd}
           onPick={picking ? handlePick : undefined}
           label={t.retouch.brushLabel}
+          zoomKey={item.id}
         />
         {slow ? (
           <HintChip tone="busy">

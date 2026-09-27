@@ -1,5 +1,14 @@
 import type { KeyboardEvent } from 'react';
-import { computeAutoCrop, resolveOutputGeometry, rotateTransform, targetAspect, transformedSize } from '../../lib/cropMath';
+import {
+  adaptCropToAspect,
+  COMMON_RATIOS,
+  computeAutoCrop,
+  describeRatio,
+  resolveOutputGeometry,
+  rotateTransform,
+  targetAspect,
+  transformedSize,
+} from '../../lib/cropMath';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
 import type { Preset, QueueItem } from '../../lib/types';
@@ -96,6 +105,42 @@ export const UndoRedo = () => {
   );
 };
 
+/** Free crop: reshapes the box to a named ratio around its center. Shift+drag then keeps it. */
+const RatioSelect = ({ onPick, imageRatio }: { onPick: (ratio: number) => void; imageRatio: number }) => {
+  const t = useT();
+  const ratios = COMMON_RATIOS.flatMap(([a, b]) => (a === b ? [[a, b]] : [[a, b], [b, a]]));
+  return (
+    <span className="relative ml-1 shrink-0">
+      <select
+        aria-label={t.crop.ratio}
+        title={t.crop.ratioTitle}
+        value=""
+        onChange={(event) => {
+          const value = event.target.value;
+          if (!value) return;
+          const [a = 1, b = 1] = value.split(':').map(Number);
+          onPick(value === 'original' ? imageRatio : a / b);
+        }}
+        className={cn(
+          'h-7.5 appearance-none rounded-md bg-transparent pr-7 pl-2.5 text-[13px] font-medium text-ink-2 hover:bg-sunken hover:text-ink max-lg:h-10',
+          focusRing,
+        )}
+      >
+        <option value="" disabled>
+          {t.crop.ratio}
+        </option>
+        <option value="original">{t.crop.originalRatio(describeRatio(imageRatio, 1))}</option>
+        {ratios.map(([a, b]) => (
+          <option key={`${a}:${b}`} value={`${a}:${b}`}>
+            {a}:{b}
+          </option>
+        ))}
+      </select>
+      <Icon name="chevronDown" className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-ink-3" />
+    </span>
+  );
+};
+
 const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
   const { state, dispatch } = useApp();
   const t = useT();
@@ -104,6 +149,7 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
   const geometry = resolveOutputGeometry(image, item.crop, preset);
   const crop = item.crop ?? computeAutoCrop(image, targetAspect(preset));
   const contain = preset.fit === 'contain' && preset.width !== null && preset.height !== null;
+  const free = targetAspect(preset) === null && !contain;
   const setTransform = (transform: QueueItem['transform']) => dispatch({ type: 'setTransform', id: item.id, transform });
 
   return (
@@ -149,6 +195,12 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
       <Button variant="ghost" size="sm" disabled={contain || item.crop === null} onClick={() => dispatch({ type: 'setCrop', id: item.id, crop: null })} aria-keyshortcuts="R">
         <Icon name="reset" /> {t.crop.reset} <Keycap className="max-lg:hidden">R</Keycap>
       </Button>
+      {free ? (
+        <RatioSelect
+          imageRatio={image.width / image.height}
+          onPick={(ratio) => dispatch({ type: 'setCrop', id: item.id, crop: adaptCropToAspect(crop, ratio, image) })}
+        />
+      ) : null}
       <span className="min-w-4 flex-1" />
       {geometry.upscaleCapped ? (
         <span
@@ -169,7 +221,8 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
       <span className="shrink-0 font-mono text-xs text-ink-3">
         {/* The source size gives way first when the toolbar is short on room (long German labels). */}
         <span className={cn({ 'max-2xl:hidden': geometry.upscaleCapped })}>
-          {contain ? t.crop.wholeImage(image.width, image.height) : t.crop.cropSize(Math.round(crop.width), Math.round(crop.height))} →{' '}
+          {contain ? t.crop.wholeImage(image.width, image.height) : t.crop.cropSize(Math.round(crop.width), Math.round(crop.height))}
+          {contain ? null : <span className="text-ink-2"> · {describeRatio(crop.width, crop.height)}</span>} →{' '}
         </span>
         <strong className="font-semibold text-ink">
           {geometry.outWidth} × {geometry.outHeight}

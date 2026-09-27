@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useViewTransform } from '../../hooks/useViewTransform';
+import { useZoomView } from '../../hooks/useZoomView';
 import { transformedSize } from '../../lib/cropMath';
 import { formatBytes } from '../../lib/format';
 import type { Cutout, QueueItem } from '../../lib/types';
@@ -8,7 +8,8 @@ import { useApp } from '../../state/AppContext';
 import { ORT_RUNTIME, SEGMENTATION_MODEL } from '../../worker/segmentationModel';
 import { isModelCached, releaseSegmenter, segmentImage, type SegmentProgress } from '../../worker/segmentClient';
 import { ImageCanvas } from '../crop/ImageCanvas';
-import { HintChip, Stage, Toolbar, ToolbarDivider } from '../layout/Stage';
+import { HintChip, panCursor, Stage, Toolbar, ToolbarDivider } from '../layout/Stage';
+import { cn } from '../../lib/cn';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { ColorInput, Toggle } from '../ui/Field';
@@ -25,9 +26,10 @@ const ImageStage = ({ item, scanning }: { item: QueueItem; scanning: boolean }) 
   const containerRef = useRef<HTMLDivElement>(null);
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const image = useMemo(() => transformedSize(bitmap, item.transform.rotation), [bitmap, item.transform.rotation]);
-  const { view } = useViewTransform(containerRef, { image });
+  // Zooms with the keyboard and Ctrl + wheel like the other stages; the controls appear once there is a cut-out to refine.
+  const { view, controls } = useZoomView(containerRef, { image, memoryKey: `${item.id}:${image.width}x${image.height}` });
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div ref={containerRef} className={cn('absolute inset-0', panCursor(controls))}>
       {view ? (
         <>
           <ImageCanvas bitmap={bitmap} transform={item.transform} view={view} />
@@ -240,6 +242,7 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
               version={version}
               onStrokeEnd={handleStrokeEnd}
               label={t.background.cutout}
+              zoomKey={item.id}
             />
             <HintChip tone={busy ? 'busy' : 'neutral'}>
               {busy ? (

@@ -25,6 +25,25 @@ export const BUILTIN_PRESETS: readonly Preset[] = [
 
 export const isBuiltinPreset = (id: string): boolean => id.startsWith(BUILTIN_PREFIX);
 
+/**
+ * Built-in and user presets in the user's chosen order. Presets missing from `order` (new ones,
+ * or built-ins added in a later version) keep their default place: built-ins first, then yours.
+ */
+export const orderedPresets = (userPresets: readonly Preset[], order: readonly string[]): Preset[] => {
+  const all = [...BUILTIN_PRESETS, ...userPresets];
+  const rank = new Map(order.map((id, index) => [id, index]));
+  if (rank.size === 0) return all;
+  // Unranked presets sort just after the ranked preset that precedes them by default.
+  let previous = -1;
+  const keyed = all.map((preset, index) => {
+    const ranked = rank.get(preset.id);
+    if (ranked !== undefined) previous = ranked;
+    return { preset, key: ranked ?? previous + 0.5, index };
+  });
+  keyed.sort((a, b) => a.key - b.key || a.index - b.index);
+  return keyed.map((entry) => entry.preset);
+};
+
 export const findPreset = (presets: readonly Preset[], id: string): Preset => {
   const found = presets.find((preset) => preset.id === id) ?? BUILTIN_PRESETS.find((preset) => preset.id === id);
   return found ?? (BUILTIN_PRESETS[0] as Preset);

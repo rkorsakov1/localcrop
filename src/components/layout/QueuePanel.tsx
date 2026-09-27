@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
 import { findPreset } from '../../lib/presets';
 import type { QueueItem } from '../../lib/types';
 import { useApp } from '../../state/AppContext';
 import { Button, focusRing, Keycap } from '../ui/Button';
+import { inputClass } from '../ui/Field';
+import { stripExtension } from '../../lib/slugify';
 import { Icon, Spinner } from '../ui/Icon';
 import { messages, presetLabel, translateError } from '../../i18n';
 import { useT } from '../../i18n/useT';
@@ -58,10 +60,59 @@ const Status = ({ item }: { item: QueueItem }) => {
   return <span>{t.queue.waiting}</span>;
 };
 
+/** Inline name editor. Only the part before the extension is edited; the extension is kept. */
+const RenameField = ({ item, onDone }: { item: QueueItem; onDone: () => void }) => {
+  const { dispatch } = useApp();
+  const t = useT();
+  const base = stripExtension(item.sourceName);
+  const extension = item.sourceName.slice(base.length);
+  const [draft, setDraft] = useState(base);
+  const done = useRef(false);
+
+  const finish = (commit: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const name = draft.trim();
+    if (commit && name && name !== base) {
+      dispatch({ type: 'renameItem', id: item.id, name: `${name}${extension}` });
+      dispatch({ type: 'announce', message: t.queue.renamed(`${name}${extension}`) });
+    }
+    onDone();
+  };
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      aria-label={t.queue.nameField}
+      spellCheck={false}
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') finish(true);
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+        }
+      }}
+      className={cn(inputClass, 'h-7 px-1.5 font-semibold max-lg:h-9')}
+    />
+  );
+};
+
 export const QueuePanel = () => {
   const { state, dispatch, removeItem, selectedItem } = useApp();
   const t = useT();
   const listRef = useRef<HTMLUListElement>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+
+  const stopRenaming = (id: string) => {
+    setRenaming(null);
+    // Give focus back to the row, so keyboard users stay in place.
+    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-item="${id}"]`)?.focus());
+  };
 
   // Keep the selected image in view when N/P moves through a long queue.
   useEffect(() => {
@@ -82,25 +133,65 @@ export const QueuePanel = () => {
       <ul ref={listRef} aria-label={t.queue.list} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {state.items.map((item, index) => {
           const selected = item.id === state.selectedId;
+          if (renaming === item.id) {
+            return (
+              <li key={item.id} className="flex items-center gap-2.5 rounded-md bg-raised p-2 ring-1 ring-line-strong ring-inset">
+                <Thumbnail bitmap={item.editedBitmap ?? item.sourceBitmap} width={44} height={32} />
+                <span className="min-w-0 flex-1">
+                  <RenameField item={item} onDone={() => stopRenaming(item.id)} />
+                </span>
+              </li>
+            );
+          }
           return (
             <li key={item.id} className="group relative">
               <button
                 type="button"
+                data-item={item.id}
                 aria-current={selected ? 'true' : undefined}
                 aria-label={`${index + 1}. ${item.sourceName}, ${statusText(item)}`}
+                aria-keyshortcuts="F2"
                 onClick={() => dispatch({ type: 'selectItem', id: item.id })}
-                className={cn('flex w-full min-w-0 items-center gap-2.5 rounded-md p-2 pr-8 text-left', focusRing, {
+                onKeyDown={(event) => {
+                  if (event.key !== 'F2') return;
+                  event.preventDefault();
+                  setRenaming(item.id);
+                }}
+                className={cn('flex w-full min-w-0 items-center gap-2.5 rounded-md p-2 pr-15 text-left', focusRing, {
                   'bg-raised ring-1 ring-line-strong ring-inset': selected,
                   'hover:bg-sunken/60': !selected,
                 })}
               >
                 <Thumbnail bitmap={item.editedBitmap ?? item.sourceBitmap} width={44} height={32} />
                 <span className="min-w-0 flex-1">
-                  <span className={cn('block truncate', { 'font-semibold': selected })}>{item.sourceName}</span>
+                  <span
+                    className={cn('block truncate', { 'font-semibold': selected })}
+                    title={t.queue.renameTitle}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      setRenaming(item.id);
+                    }}
+                  >
+                    {item.sourceName}
+                  </span>
                   <span className="flex text-xs text-ink-3">
                     <Status item={item} />
                   </span>
                 </span>
+              </button>
+              <button
+                type="button"
+                aria-label={t.queue.rename(item.sourceName)}
+                title={t.queue.renameTitle}
+                onClick={() => setRenaming(item.id)}
+                className={cn(
+                  'absolute top-1/2 right-8 flex size-6 -translate-y-1/2 items-center justify-center rounded text-ink-3 hover:bg-sunken hover:text-ink',
+                  'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
+                  { 'opacity-100': selected },
+                  focusRing,
+                )}
+              >
+                <Icon name="pencil" className="size-3.5" />
               </button>
               <button
                 type="button"

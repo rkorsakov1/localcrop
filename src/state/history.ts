@@ -10,7 +10,7 @@ type ItemDoc = Pick<
   'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceBitmap' | 'editedBitmap' | 'cutout' | 'transform' | 'crop' | 'presetId' | 'overrides'
 >;
 
-export type Snapshot = { items: ItemDoc[]; presets: Preset[]; lastPresetId: string; selectedId: string | null };
+export type Snapshot = { items: ItemDoc[]; presets: Preset[]; presetOrder: string[]; lastPresetId: string; selectedId: string | null };
 
 export type History = {
   past: Snapshot[];
@@ -28,7 +28,7 @@ export const HISTORY_PIXEL_BUDGET = 400_000_000;
 /** Actions of the same kind closer together than this merge into one step (slider drags, key repeat). */
 const COALESCE_MS = 700;
 
-const DOC_KEYS = ['sourceBitmap', 'editedBitmap', 'cutout', 'transform', 'crop', 'presetId', 'overrides'] as const;
+const DOC_KEYS = ['sourceName', 'sourceBitmap', 'editedBitmap', 'cutout', 'transform', 'crop', 'presetId', 'overrides'] as const;
 
 const toDoc = (item: QueueItem): ItemDoc => ({
   id: item.id,
@@ -49,12 +49,14 @@ const sameDoc = (a: ItemDoc, b: ItemDoc): boolean => DOC_KEYS.every((key) => a[k
 export const snapshotOf = (state: AppState): Snapshot => ({
   items: state.items.map(toDoc),
   presets: state.presets,
+  presetOrder: state.presetOrder,
   lastPresetId: state.lastPresetId,
   selectedId: state.selectedId,
 });
 
 const documentChanged = (before: AppState, after: AppState): boolean =>
   before.presets !== after.presets ||
+  before.presetOrder !== after.presetOrder ||
   before.lastPresetId !== after.lastPresetId ||
   before.items.length !== after.items.length ||
   before.items.some((item, index) => {
@@ -77,7 +79,7 @@ const restore = (state: AppState, snapshot: Snapshot): AppState => {
   });
   const selectedStillThere = items.some((item) => item.id === state.selectedId);
   const selectedId = changed?.id ?? (selectedStillThere ? state.selectedId : (snapshot.selectedId ?? items[0]?.id ?? null));
-  return { ...state, items, presets: snapshot.presets, lastPresetId: snapshot.lastPresetId, selectedId };
+  return { ...state, items, presets: snapshot.presets, presetOrder: snapshot.presetOrder, lastPresetId: snapshot.lastPresetId, selectedId };
 };
 
 /** Every bitmap a snapshot refers to. */
@@ -101,6 +103,7 @@ const trimPast = (past: Snapshot[]): Snapshot[] => {
 const UNDOABLE: ReadonlySet<AppAction['type']> = new Set<AppAction['type']>([
   'addItems',
   'removeItem',
+  'renameItem',
   'setCrop',
   'setTransform',
   'setItemPreset',

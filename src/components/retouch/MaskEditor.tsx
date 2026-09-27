@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { isTextEntryTarget } from '../../hooks/useKeyboardShortcuts';
-import { useViewTransform } from '../../hooks/useViewTransform';
+import { useZoomView } from '../../hooks/useZoomView';
 import { cn } from '../../lib/cn';
-import { screenToSource, transformedSize, transformedToSource, type Point } from '../../lib/cropMath';
-import { drawTransformed, get2d } from '../../lib/drawing';
+import { screenToSource, transformedSize, transformedToSource, visibleRect, type Point } from '../../lib/cropMath';
+import { drawTransformed } from '../../lib/drawing';
 import type { Rect } from '../../lib/inpaint';
 import type { Transform } from '../../lib/types';
-import { ImageCanvas } from '../crop/ImageCanvas';
+import { boxStyle, ImageCanvas, prepareVisibleCanvas } from '../crop/ImageCanvas';
+import { panCursor, ZoomControl } from '../layout/Stage';
 import { focusRing } from '../ui/Button';
 import { checkerboardClass } from '../preview/Checkerboard';
 import { useT } from '../../i18n/useT';
@@ -34,6 +35,8 @@ type MaskEditorProps = {
   /** When set, clicks pick a point (eyedropper) instead of painting. */
   onPick?: (point: Point) => void;
   label: string;
+  /** Identifies the image for remembering zoom and pan across modes. */
+  zoomKey: string;
 };
 
 export const MIN_BRUSH = 2;
@@ -74,12 +77,12 @@ const growRect = (rect: Rect | null, point: Point, radius: number): Rect => {
  * Brush editor over the image, shared by Retouch (fill mask) and Background (alpha refinement).
  * The mask lives at source resolution and is displayed through the same view transform as the crop editor.
  */
-export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, disabled = false, backdrop = null, onPick, label }: MaskEditorProps) => {
+export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, disabled = false, backdrop = null, onPick, label, zoomKey }: MaskEditorProps) => {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const image = useMemo(() => transformedSize(bitmap, transform.rotation), [bitmap, transform.rotation]);
-  const { view, devicePixelRatio } = useViewTransform(containerRef, { image });
+  const { view, controls } = useZoomView(containerRef, { image, memoryKey: `${zoomKey}:${image.width}x${image.height}` });
   const maskContext = useMemo(() => mask.getContext('2d', { willReadFrequently: true }), [mask]);
   const stroke = useRef<{ pointerId: number; last: Point; rect: Rect | null } | null>(null);
   const frame = useRef<number | null>(null);
@@ -90,26 +93,25 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
     frame.current = null;
     const overlay = overlayRef.current;
     if (!overlay || !view) return;
-    const width = Math.max(1, Math.round(view.displayWidth * devicePixelRatio));
-    const height = Math.max(1, Math.round(view.displayHeight * devicePixelRatio));
-    if (overlay.width !== width || overlay.height !== height) {
-      overlay.width = width;
-      overlay.height = height;
-    }
-    const context = get2d(overlay);
-    context.clearRect(0, 0, width, height);
+    // Only the on-screen part is drawn, so a stroke stays cheap at any zoom.
+    const prepared = prepareVisibleCanvas(overlay, view);
+    if (!prepared) return;
+    const { context } = prepared;
+    // The mask edge stays smooth even when the image shows hard pixels.
+    context.imageSmoothingEnabled = variant === 'mask' || view.deviceScale < 2;
     if (variant === 'mask') {
       drawTransformed(context, mask, transform, view.deviceScale);
       context.globalCompositeOperation = 'source-in';
       context.fillStyle = getComputedStyle(overlay).getPropertyValue('--color-accent').trim() || '#3d5fd9';
-      context.fillRect(0, 0, width, height);
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.fillRect(0, 0, overlay.width, overlay.height);
     } else {
       drawTransformed(context, bitmap, transform, view.deviceScale);
       context.globalCompositeOperation = 'destination-in';
       drawTransformed(context, mask, transform, view.deviceScale);
     }
     context.globalCompositeOperation = 'source-over';
-  }, [view, devicePixelRatio, variant, mask, bitmap, transform]);
+  }, [view, variant, mask, bitmap, transform]);
 
   const scheduleRedraw = useCallback(() => {
     if (frame.current === null) frame.current = requestAnimationFrame(redraw);
@@ -222,7 +224,8 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
       });
       return;
     }
-    if (event.key !== ' ' && event.key !== 'Enter') return;
+    // Space is for panning (Space+drag) until the arrow keys have placed a brush cursor.
+    if (event.key !== 'Enter' && !(event.key === ' ' && keyboardCursor)) return;
     event.preventDefault();
     setKeyboardCursor(current);
     const point = transformedToSource(current, bitmap, transform);
@@ -237,65 +240,70 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
   const cursorSize = view ? brush.size * view.scale : 0;
   const keyboardScreen = view && keyboardCursor ? { x: view.offsetX + keyboardCursor.x * view.scale, y: view.offsetY + keyboardCursor.y * view.scale } : null;
 
+  const panning = controls.panMode !== 'idle';
+
   return (
-    <div
-      ref={containerRef}
-      role="application"
-      aria-roledescription={t.brush.canvasRole}
-      aria-label={t.brush.canvas(label, variant === 'alpha')}
-      tabIndex={0}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onPointerLeave={() => setCursor(null)}
-      onKeyDown={handleKeyDown}
-      onBlur={() => setKeyboardCursor(null)}
-      aria-busy={disabled}
-      className={cn('absolute inset-0 touch-none overflow-hidden select-none', focusRing, '-outline-offset-2', {
-        'cursor-crosshair': Boolean(onPick),
-        'cursor-none': !onPick && !disabled,
-        'cursor-progress': disabled && !onPick,
-      })}
-    >
-      {view ? (
-        <>
-          {variant === 'alpha' ? (
-            <div
+    <>
+      <div
+        ref={containerRef}
+        role="application"
+        aria-roledescription={t.brush.canvasRole}
+        aria-label={t.brush.canvas(label, variant === 'alpha')}
+        tabIndex={0}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onPointerLeave={() => setCursor(null)}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setKeyboardCursor(null)}
+        aria-busy={disabled}
+        className={cn('absolute inset-0 touch-none overflow-hidden select-none', focusRing, '-outline-offset-2', {
+          'cursor-crosshair': Boolean(onPick),
+          'cursor-none': !onPick && !disabled,
+          'cursor-progress': disabled && !onPick,
+        }, panCursor(controls))}
+      >
+        {view ? (
+          <>
+            {variant === 'alpha' ? (
+              <div
+                aria-hidden="true"
+                className={cn('absolute', { [checkerboardClass]: !backdrop })}
+                // The backdrop is a user-chosen runtime color, so it can't be a Tailwind class.
+                style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight, backgroundColor: backdrop ?? undefined }}
+              />
+            ) : null}
+            {/* In alpha mode a faint ghost of the removed area helps aim the Restore brush. */}
+            <ImageCanvas bitmap={bitmap} transform={transform} view={view} className={cn({ 'opacity-15': variant === 'alpha' })} />
+            <canvas
+              ref={overlayRef}
               aria-hidden="true"
-              className={cn('absolute', { [checkerboardClass]: !backdrop })}
-              // The backdrop is a user-chosen runtime color, so it can't be a Tailwind class.
-              style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight, backgroundColor: backdrop ?? undefined }}
+              className={cn('pointer-events-none absolute', { 'opacity-50': variant === 'mask' })}
+              style={{ position: 'absolute', ...boxStyle(visibleRect(view)) }}
             />
-          ) : null}
-          {/* In alpha mode a faint ghost of the removed area helps aim the Restore brush. */}
-          <ImageCanvas bitmap={bitmap} transform={transform} view={view} className={cn({ 'opacity-15': variant === 'alpha' })} />
-          <canvas
-            ref={overlayRef}
-            aria-hidden="true"
-            className={cn('pointer-events-none absolute', { 'opacity-50': variant === 'mask' })}
-            style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }}
-          />
-          {cursor && !onPick ? (
-            <div
-              aria-hidden="true"
-              className={cn(
-                'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white shadow-[0_0_0_1px_rgb(0_0_0/0.45),inset_0_0_0_1px_rgb(0_0_0/0.45)]',
-                { 'border-dashed': brush.erase, 'opacity-40': disabled },
-              )}
-              style={{ left: cursor.x, top: cursor.y, width: cursorSize, height: cursorSize }}
-            />
-          ) : null}
-          {keyboardScreen ? (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent"
-              style={{ left: keyboardScreen.x, top: keyboardScreen.y, width: Math.max(8, cursorSize), height: Math.max(8, cursorSize) }}
-            />
-          ) : null}
-        </>
-      ) : null}
-    </div>
+            {cursor && !onPick && !panning ? (
+              <div
+                aria-hidden="true"
+                className={cn(
+                  'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white shadow-[0_0_0_1px_rgb(0_0_0/0.45),inset_0_0_0_1px_rgb(0_0_0/0.45)]',
+                  { 'border-dashed': brush.erase, 'opacity-40': disabled },
+                )}
+                style={{ left: cursor.x, top: cursor.y, width: cursorSize, height: cursorSize }}
+              />
+            ) : null}
+            {keyboardScreen ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent"
+                style={{ left: keyboardScreen.x, top: keyboardScreen.y, width: Math.max(8, cursorSize), height: Math.max(8, cursorSize) }}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      <ZoomControl controls={controls} />
+    </>
   );
 };
 

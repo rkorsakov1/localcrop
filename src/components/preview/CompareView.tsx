@@ -1,20 +1,19 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { useViewTransform } from '../../hooks/useViewTransform';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useZoomView } from '../../hooks/useZoomView';
 import { cn } from '../../lib/cn';
-import { clampPan, type Point } from '../../lib/cropMath';
 import { get2d } from '../../lib/drawing';
 import type { QueueItem } from '../../lib/types';
 import type { PreviewReference } from '../../hooks/useDebouncedEncode';
 import { FORMAT_LABELS, formatBytes } from '../../lib/format';
 import { getItemPreset } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
-import { HintChip, Stage, Toolbar } from '../layout/Stage';
+import { HintChip, panCursor, Stage, Toolbar, ZoomControl } from '../layout/Stage';
 import { focusRing, Segmented } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useT } from '../../i18n/useT';
 import { checkerboardClass } from './Checkerboard';
 
-type Zoom = 'fit' | 1 | 2;
+type Zoom = 'fit' | 1 | 2 | 'other';
 const ZOOMS: { value: Zoom; label: string }[] = [
   { value: 'fit', label: 'Fit' },
   { value: 1, label: '100%' },
@@ -23,7 +22,7 @@ const ZOOMS: { value: Zoom; label: string }[] = [
 
 type CompareViewProps = { item: QueueItem; reference: PreviewReference | null };
 
-type Drag = { pointerId: number; kind: 'split' | 'pan'; startX: number; startY: number; startPan: Point };
+type Drag = { pointerId: number };
 
 /** Before/after split: left = source crop resampled to the output size, right = the encoded file. */
 export const CompareView = ({ item, reference }: CompareViewProps) => {
@@ -32,14 +31,23 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
   const preset = getItemPreset(state, item);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [zoom, setZoom] = useState<Zoom>('fit');
-  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [split, setSplit] = useState(50);
   const drag = useRef<Drag | null>(null);
   const output = item.output;
-  const image = { width: output?.width ?? 1, height: output?.height ?? 1 };
-  const { view, container } = useViewTransform(containerRef, { image, zoom, pan, padding: 16 });
+  const outputWidth = output?.width ?? 1;
+  const outputHeight = output?.height ?? 1;
+  const image = useMemo(() => ({ width: outputWidth, height: outputHeight }), [outputWidth, outputHeight]);
+  const zoomed = useRef(false);
+  const { view, container, controls } = useZoomView(containerRef, {
+    image,
+    padding: 16,
+    memoryKey: `compare:${item.id}:${outputWidth}x${outputHeight}`,
+    // Zoomed in, a drag pans (except on the split handle); fitted, it moves the split.
+    panWithPrimary: (event) => zoomed.current && !(event.target instanceof Element && event.target.closest('[role="slider"]')),
+  });
+  zoomed.current = !controls.isFit;
   const hasView = view !== null;
+  const zoom: Zoom = controls.isFit ? 'fit' : Math.abs(controls.zoom - 1) < 0.001 ? 1 : Math.abs(controls.zoom - 2) < 0.001 ? 2 : 'other';
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -49,20 +57,6 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
     get2d(canvas).drawImage(reference.bitmap, 0, 0);
   }, [reference, hasView]);
 
-  useEffect(() => setPan({ x: 0, y: 0 }), [zoom]);
-
-  if (!output) {
-    return (
-      <>
-        <Toolbar label={t.compare.zoomToolbar}>
-          <span className="text-xs text-ink-3">{t.compare.legend}</span>
-        </Toolbar>
-        <Stage>
-          <HintChip>{t.compare.pending}</HintChip>
-        </Stage>
-      </>
-    );
-  }
 
   const splitFromPointer = (clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -71,25 +65,20 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
     setSplit(Math.round(Math.min(100, Math.max(0, (x / view.displayWidth) * 100))));
   };
 
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>, kind: Drag['kind']) => {
-    if (event.button !== 0) return;
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !output) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { pointerId: event.pointerId, kind, startX: event.clientX, startY: event.clientY, startPan: pan };
-    if (kind === 'split') splitFromPointer(event.clientX);
+    drag.current = { pointerId: event.pointerId };
+    splitFromPointer(event.clientX);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId || !view) return;
     event.stopPropagation();
-    if (current.kind === 'split') {
-      splitFromPointer(event.clientX);
-      return;
-    }
-    const next = { x: current.startPan.x + event.clientX - current.startX, y: current.startPan.y + event.clientY - current.startY };
-    setPan(clampPan(next, container, { width: view.displayWidth, height: view.displayHeight }));
+    splitFromPointer(event.clientX);
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
@@ -116,48 +105,57 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
     setSplit(Math.min(100, Math.max(0, next)));
   };
 
-  const zoomed = zoom !== 'fit';
   const layerStyle = view
     ? { left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }
     : undefined;
 
-  const encodedLabel = `${t.compare.encoded} · ${FORMAT_LABELS[preset.format]}${preset.format === 'png' ? '' : ` q${output.quality}`} · ${formatBytes(output.blob.size)}`;
+  const encodedLabel = output
+    ? `${t.compare.encoded} · ${FORMAT_LABELS[preset.format]}${preset.format === 'png' ? '' : ` q${output.quality}`} · ${formatBytes(output.blob.size)}`
+    : '';
+  const pixelated = controls.zoom >= 2;
   const handleX = view ? view.offsetX + (view.displayWidth * split) / 100 : 0;
 
   return (
     <>
       <Toolbar label={t.compare.zoomToolbar}>
-        <Segmented<Zoom> label={t.compare.zoom} value={zoom} options={ZOOMS.map((option) => (option.value === 'fit' ? { ...option, label: t.compare.fit } : option))} onChange={setZoom} />
-        <span className="ml-2 text-xs text-ink-3">{zoomed ? t.compare.dragPan : t.compare.dragCompare}</span>
+        <Segmented<Zoom>
+          label={t.compare.zoom}
+          value={zoom}
+          disabled={!output}
+          options={ZOOMS.map((option) => (option.value === 'fit' ? { ...option, label: t.compare.fit } : option))}
+          onChange={(value) => (value === 'fit' ? controls.fit() : typeof value === 'number' ? controls.setZoom(value) : undefined)}
+        />
+        <span className="ml-2 text-xs text-ink-3">{controls.isFit ? t.compare.dragCompare : t.compare.dragPan}</span>
         <span className="min-w-4 flex-1" />
         <span className="text-xs text-ink-3 max-lg:hidden">{t.compare.legend}</span>
       </Toolbar>
       <Stage>
         <div
           ref={containerRef}
-          onPointerDown={(event) => handlePointerDown(event, zoomed ? 'pan' : 'split')}
+          onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          className={cn('absolute inset-0 touch-none overflow-hidden select-none', {
-            'cursor-grab active:cursor-grabbing': zoomed,
-            'cursor-col-resize': !zoomed,
-          })}
+          className={cn(
+            'absolute inset-0 touch-none overflow-hidden select-none',
+            { 'cursor-grab': !controls.isFit, 'cursor-col-resize': controls.isFit && output !== null },
+            panCursor(controls),
+          )}
         >
-          {view ? (
+          {view && output ? (
             <>
               <div aria-hidden="true" className={cn('absolute', checkerboardClass)} style={layerStyle} />
               <img
                 src={output.url}
                 alt={t.compare.encodedAlt}
                 draggable={false}
-                className={cn('absolute max-w-none', { '[image-rendering:pixelated]': zoom === 2 })}
+                className={cn('absolute max-w-none', { '[image-rendering:pixelated]': pixelated })}
                 style={layerStyle}
               />
               <canvas
                 ref={canvasRef}
                 aria-label={t.compare.sourceAlt}
-                className={cn('absolute', { '[image-rendering:pixelated]': zoom === 2, invisible: !reference })}
+                className={cn('absolute', { '[image-rendering:pixelated]': pixelated, invisible: !reference })}
                 style={{ ...layerStyle, clipPath: `inset(0 ${100 - split}% 0 0)` }}
               />
               <div
@@ -173,7 +171,7 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
                 aria-valuemax={100}
                 aria-valuenow={split}
                 aria-valuetext={t.compare.sliderValue(split)}
-                onPointerDown={(event) => handlePointerDown(event, 'split')}
+                onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
@@ -196,6 +194,7 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
             </>
           ) : null}
         </div>
+        {output ? <ZoomControl controls={controls} /> : <HintChip>{t.compare.pending}</HintChip>}
       </Stage>
     </>
   );

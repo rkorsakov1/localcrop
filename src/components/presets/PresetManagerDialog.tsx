@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { DEFAULT_FILENAME_TEMPLATE } from '../../lib/filenameTemplate';
-import { BUILTIN_PRESETS, uniquePresetName } from '../../lib/presets';
+import { BUILTIN_PRESETS, isBuiltinPreset, orderedPresets, uniquePresetName } from '../../lib/presets';
 import { createShareHash } from '../../lib/presetShare';
 import { createPresetFile, describeMergeSummary, mergePresets, validatePresetFile } from '../../lib/presetValidation';
 import { FORMAT_LABELS } from '../../lib/format';
 import type { Preset } from '../../lib/types';
 import { triggerDownload, useApp } from '../../state/AppContext';
 import { cn } from '../../lib/cn';
-import { Button, sectionLabelClass } from '../ui/Button';
+import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { inputClass } from '../ui/Field';
 import { Icon } from '../ui/Icon';
@@ -43,17 +43,37 @@ type RowProps = {
   preset: Preset;
   builtin: boolean;
   selected: boolean;
-  first: boolean;
-  last: boolean;
+  /** Vertical offset while this row is being dragged; null when it isn't. */
+  dragOffset: number | null;
   onToggleSelected: () => void;
   onRename: (name: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onMove: (offset: 1 | -1) => void;
+  onGripPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
+  onGripKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   onShare?: () => void;
 };
 
-const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, onRename, onDuplicate, onDelete, onMove, onShare }: RowProps) => {
+/** Drag handle; also moves the row with the up/down arrow keys. */
+const Grip = ({ preset, onPointerDown, onKeyDown }: { preset: Preset; onPointerDown: RowProps['onGripPointerDown']; onKeyDown: RowProps['onGripKeyDown'] }) => {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      data-grip={preset.id}
+      aria-label={t.presets.reorder(presetLabel(preset))}
+      aria-keyshortcuts="ArrowUp ArrowDown"
+      title={t.presets.reorderTitle}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      className="-ml-1.5 flex h-8 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-3 hover:bg-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-accent active:cursor-grabbing max-lg:h-11 max-lg:w-9"
+    >
+      <Icon name="grip" strokeWidth={2.6} />
+    </button>
+  );
+};
+
+const PresetRow = ({ preset, builtin, selected, dragOffset, onToggleSelected, onRename, onDuplicate, onDelete, onGripPointerDown, onGripKeyDown, onShare }: RowProps) => {
   const t = useT();
   const [name, setName] = useState(preset.name);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -68,20 +88,34 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
     if (trimmed !== preset.name) onRename(trimmed);
   };
 
+  const grip = <Grip preset={preset} onPointerDown={onGripPointerDown} onKeyDown={onGripKeyDown} />;
+  const dragging = dragOffset !== null;
+  const rowClass = cn('flex items-center gap-2.5 bg-panel py-2', { 'relative z-10 rounded-md opacity-90 shadow-float': dragging });
+  const rowStyle = dragging ? { transform: `translateY(${dragOffset}px)` } : undefined;
+
   if (builtin) {
     return (
-      <li className="flex min-h-11 items-center gap-3 py-1.5">
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{presetLabel(preset)}</p>
-        <p className="hidden truncate font-mono text-[11px] text-ink-3 sm:block">{describePreset(preset)}</p>
-        <Button size="sm" onClick={onDuplicate} aria-label={t.presets.duplicateNamed(presetLabel(preset))}>
-          {t.presets.duplicate}
+      <li data-preset={preset.id} className={rowClass} style={rowStyle}>
+        {grip}
+        <span className="flex size-4 shrink-0 items-center justify-center text-ink-3" title={t.presets.builtInTitle}>
+          <Icon name="lock" className="size-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate px-1.5 text-[13px] font-medium">
+            {presetLabel(preset)} <span className="ml-1 text-[11px] font-normal text-ink-3">{t.presets.builtInBadge}</span>
+          </p>
+          <p className="mt-0.5 truncate pl-1.5 font-mono text-[11px] text-ink-3">{describePreset(preset)}</p>
+        </div>
+        <Button size="icon-sm" variant="ghost" onClick={onDuplicate} aria-label={t.presets.duplicateNamed(presetLabel(preset))} title={t.presets.duplicate}>
+          <Icon name="duplicate" />
         </Button>
       </li>
     );
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-2.5 py-2">
+    <li data-preset={preset.id} className={cn(rowClass, 'flex-wrap')} style={rowStyle}>
+      {grip}
       <input
         type="checkbox"
         checked={selected}
@@ -114,12 +148,6 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
         </div>
       ) : (
         <div className="flex items-center gap-0.5">
-          <Button size="icon-sm" variant="ghost" disabled={first} onClick={() => onMove(-1)} aria-label={t.presets.moveUp(preset.name)}>
-            <Icon name="up" />
-          </Button>
-          <Button size="icon-sm" variant="ghost" disabled={last} onClick={() => onMove(1)} aria-label={t.presets.moveDown(preset.name)}>
-            <Icon name="down" />
-          </Button>
           {onShare ? (
             <Button size="icon-sm" variant="ghost" onClick={onShare} aria-label={t.presets.shareNamed(preset.name)} title={t.presets.shareTitle}>
               <Icon name="link" />
@@ -146,6 +174,75 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allNames = [...BUILTIN_PRESETS, ...state.presets];
+  const ordered = orderedPresets(state.presets, state.presetOrder);
+  const listRef = useRef<HTMLUListElement>(null);
+  /** A pointer drag of one row: where it would land, and the drop line's y inside the list. */
+  const [drag, setDrag] = useState<{ id: string; index: number; offset: number; indicator: number | null } | null>(null);
+
+  const moveTo = (preset: Preset, index: number) => {
+    dispatch({ type: 'movePreset', id: preset.id, index });
+    const position = Math.min(ordered.length, Math.max(1, index + 1));
+    dispatch({ type: 'announce', message: t.presets.moved(presetLabel(preset), position, ordered.length) });
+  };
+
+  const handleGripKey = (event: KeyboardEvent<HTMLButtonElement>, preset: Preset) => {
+    const index = ordered.findIndex((candidate) => candidate.id === preset.id);
+    const targets: Record<string, number> = { ArrowUp: index - 1, ArrowDown: index + 1, Home: 0, End: ordered.length - 1 };
+    const target = targets[event.key];
+    if (target === undefined) return;
+    event.preventDefault();
+    if (target < 0 || target >= ordered.length) return;
+    moveTo(preset, target);
+    // The row moves in the DOM; keep the handle focused so the arrows can keep going.
+    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-grip="${preset.id}"]`)?.focus());
+  };
+
+  /** Where a row dragged to `clientY` would land, among the other rows. */
+  const dropTarget = (id: string, clientY: number) => {
+    const list = listRef.current;
+    if (!list) return { index: 0, indicator: null };
+    const rows = [...list.querySelectorAll<HTMLElement>('li[data-preset]')].filter((row) => row.dataset.preset !== id);
+    const top = list.getBoundingClientRect().top;
+    let index = 0;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      if (clientY > rect.top + rect.height / 2) index += 1;
+    }
+    const before = rows[index - 1];
+    const after = rows[index];
+    const indicator = after ? after.getBoundingClientRect().top - top : before ? before.getBoundingClientRect().bottom - top : null;
+    return { index, indicator };
+  };
+
+  const startDrag = (event: PointerEvent<HTMLButtonElement>, id: string) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const index = ordered.findIndex((preset) => preset.id === id);
+    const startY = event.clientY;
+    setDrag({ id, index, offset: 0, indicator: null });
+
+    const target = event.currentTarget;
+    const handleMove = (move: globalThis.PointerEvent) => {
+      if (move.pointerId !== event.pointerId) return;
+      const next = dropTarget(id, move.clientY);
+      setDrag((current) => (current ? { ...current, ...next, offset: move.clientY - startY } : current));
+    };
+    const handleUp = (up: globalThis.PointerEvent) => {
+      if (up.pointerId !== event.pointerId) return;
+      target.removeEventListener('pointermove', handleMove);
+      target.removeEventListener('pointerup', handleUp);
+      target.removeEventListener('pointercancel', handleUp);
+      setDrag(null);
+      if (up.type === 'pointercancel') return;
+      const { index: to } = dropTarget(id, up.clientY);
+      const preset = ordered.find((candidate) => candidate.id === id);
+      if (preset && to !== index) moveTo(preset, to);
+    };
+    target.addEventListener('pointermove', handleMove);
+    target.addEventListener('pointerup', handleUp);
+    target.addEventListener('pointercancel', handleUp);
+  };
 
   const handleDuplicate = (preset: Preset) => {
     const copy: Preset = { ...preset, id: crypto.randomUUID(), name: uniquePresetName(t.presets.copyName(presetLabel(preset)), allNames) };
@@ -257,23 +354,17 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
         </div>
       ) : null}
 
-      <h3 className={sectionLabelClass}>
-        {t.presets.yours} · <span className="font-mono">{state.presets.length}</span>
-      </h3>
-      {state.presets.length === 0 ? (
-        <p className="py-3 text-[13px] text-ink-3">
-          {t.presets.none}
-        </p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {state.presets.map((preset, index) => (
+      <p className="mb-2 text-xs text-ink-3">{t.presets.orderHint}</p>
+      <ul ref={listRef} aria-label={t.presets.listLabel} className="relative divide-y divide-line">
+        {ordered.map((preset) => {
+          const builtin = isBuiltinPreset(preset.id);
+          return (
             <PresetRow
               key={preset.id}
               preset={preset}
-              builtin={false}
+              builtin={builtin}
               selected={selected.has(preset.id)}
-              first={index === 0}
-              last={index === state.presets.length - 1}
+              dragOffset={drag?.id === preset.id ? drag.offset : null}
               onToggleSelected={() => toggleSelected(preset.id)}
               onRename={(name) => dispatch({ type: 'upsertPreset', preset: { ...preset, name: uniquePresetName(name, allNames.filter((other) => other.id !== preset.id)) } })}
               onDuplicate={() => handleDuplicate(preset)}
@@ -286,31 +377,17 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
                 });
                 dispatch({ type: 'announce', message: t.presets.deleted(preset.name) });
               }}
-              onMove={(offset) => dispatch({ type: 'movePreset', id: preset.id, offset })}
-              onShare={() => void handleShare(preset)}
+              onGripPointerDown={(event) => startDrag(event, preset.id)}
+              onGripKeyDown={(event) => handleGripKey(event, preset)}
+              onShare={builtin ? undefined : () => void handleShare(preset)}
             />
-          ))}
-        </ul>
-      )}
-
-      <h3 className={cn(sectionLabelClass, 'mt-5')}>{t.presets.builtIn}</h3>
-      <ul className="divide-y divide-line">
-        {BUILTIN_PRESETS.map((preset) => (
-          <PresetRow
-            key={preset.id}
-            preset={preset}
-            builtin
-            selected={false}
-            first
-            last
-            onToggleSelected={() => undefined}
-            onRename={() => undefined}
-            onDuplicate={() => handleDuplicate(preset)}
-            onDelete={() => undefined}
-            onMove={() => undefined}
-          />
-        ))}
+          );
+        })}
+        {drag && drag.indicator !== null ? (
+          <li aria-hidden="true" className="pointer-events-none absolute inset-x-0 z-20 h-0.5 -translate-y-1/2 rounded-full bg-accent" style={{ top: drag.indicator }} />
+        ) : null}
       </ul>
+      {state.presets.length === 0 ? <p className="mt-3 text-[13px] text-ink-3">{t.presets.none}</p> : null}
     </Dialog>
   );
 };

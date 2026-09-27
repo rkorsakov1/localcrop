@@ -67,9 +67,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => syncLanguagePath(state.prefs.language), [state.prefs.language]);
 
   useEffect(() => {
-    const saved = savePersistedState({ presets: state.presets, lastPresetId: state.lastPresetId, prefs: state.prefs });
+    const saved = savePersistedState({ presets: state.presets, presetOrder: state.presetOrder, lastPresetId: state.lastPresetId, prefs: state.prefs });
     if (!saved) console.warn('Could not save presets to localStorage.');
-  }, [state.presets, state.lastPresetId, state.prefs]);
+  }, [state.presets, state.presetOrder, state.lastPresetId, state.prefs]);
 
   // Free bitmaps no longer reachable from the state or undo history, and preview URLs of removed images.
   const tracked = useRef(new Set<ImageBitmap>());

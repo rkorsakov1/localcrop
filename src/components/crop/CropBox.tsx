@@ -85,7 +85,9 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
       onChange(moveCrop(current.startCrop, point.x - current.start.x, point.y - current.start.y, bounds), current.gesture);
       return;
     }
-    onChange(resizeCropFromCorner(current.startCrop, current.kind, point, aspect, bounds), current.gesture);
+    // Shift keeps the box's current shape when the ratio isn't locked.
+    const shape = aspect ?? (event.shiftKey ? current.startCrop.width / current.startCrop.height : null);
+    onChange(resizeCropFromCorner(current.startCrop, current.kind, point, shape, bounds), current.gesture);
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
@@ -132,6 +134,7 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
   return (
     <div
       role="group"
+      data-crop-box
       aria-roledescription={t.crop.areaRole}
       aria-label={t.crop.area(Math.round(crop.width), Math.round(crop.height), Math.round(crop.x), Math.round(crop.y))}
       tabIndex={0}

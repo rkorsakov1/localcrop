@@ -115,6 +115,50 @@ export const scaleCropAroundCenter = (crop: CropRect, factor: number, bounds: Si
   return clampCropToBounds({ x: centerX - width / 2, y: centerY - height / 2, width, height }, bounds);
 };
 
+/**
+ * Reshapes a crop to `aspect` around its center, keeping roughly the same area, then fits it
+ * inside the image. Used when the target ratio changes, so the selection doesn't jump away.
+ */
+export const adaptCropToAspect = (crop: CropRect, aspect: number, bounds: Size): CropRect => {
+  let width = Math.sqrt(crop.width * crop.height * aspect);
+  let height = width / aspect;
+  const shrink = Math.min(1, bounds.width / width, bounds.height / height);
+  width *= shrink;
+  height *= shrink;
+  const minWidth = Math.min(Math.max(MIN_CROP_SIZE, MIN_CROP_SIZE * aspect), bounds.width, bounds.height * aspect);
+  if (width < minWidth) {
+    width = minWidth;
+    height = width / aspect;
+  }
+  const centerX = crop.x + crop.width / 2;
+  const centerY = crop.y + crop.height / 2;
+  return clampCropToBounds({ x: centerX - width / 2, y: centerY - height / 2, width, height }, bounds);
+};
+
+/** Ratios people ask for by name, landscape first; portrait versions are matched too. */
+export const COMMON_RATIOS: readonly [number, number][] = [
+  [1, 1],
+  [5, 4],
+  [4, 3],
+  [3, 2],
+  [16, 10],
+  [16, 9],
+  [2, 1],
+  [21, 9],
+];
+
+/** "16:9", "4:5" for a common ratio (within 0.5%), otherwise "1.47:1" / "1:1.47". */
+export const describeRatio = (width: number, height: number): string => {
+  if (width <= 0 || height <= 0) return '';
+  const ratio = width / height;
+  for (const [a, b] of COMMON_RATIOS) {
+    if (Math.abs(ratio / (a / b) - 1) < 0.005) return `${a}:${b}`;
+    if (Math.abs(ratio / (b / a) - 1) < 0.005) return `${b}:${a}`;
+  }
+  const format = (value: number) => String(Math.round(value * 100) / 100);
+  return ratio >= 1 ? `${format(ratio)}:1` : `1:${format(1 / ratio)}`;
+};
+
 /** Rounds a crop to whole source pixels, staying inside bounds. */
 export const roundCrop = (crop: CropRect, bounds: Size): CropRect => {
   const x = clamp(Math.round(crop.x), 0, bounds.width - 1);
@@ -230,6 +274,9 @@ export type ViewTransform = {
   /** Displayed image size in CSS pixels. */
   displayWidth: number;
   displayHeight: number;
+  /** Size of the container the image is shown in, in CSS pixels. */
+  viewportWidth: number;
+  viewportHeight: number;
 };
 
 export type ViewInput = {
@@ -261,7 +308,23 @@ export const getViewTransform = ({ container, image, zoom, pan, devicePixelRatio
     deviceScale: scale * devicePixelRatio,
     displayWidth,
     displayHeight,
+    viewportWidth: container.width,
+    viewportHeight: container.height,
   };
+};
+
+/** Scale that fits the whole image in the container, as a zoom value (device px per source px). */
+export const fitZoom = (container: Size, image: Size, devicePixelRatio: number, padding = 0): number =>
+  Math.min(Math.max(1, container.width - padding * 2) / image.width, Math.max(1, container.height - padding * 2) / image.height) * devicePixelRatio;
+
+/** The part of the displayed image that is inside the container (CSS px, container coordinates); null if none is. */
+export const visibleRect = (view: ViewTransform): CropRect | null => {
+  const left = Math.max(0, Math.floor(view.offsetX));
+  const top = Math.max(0, Math.floor(view.offsetY));
+  const right = Math.min(view.viewportWidth, Math.ceil(view.offsetX + view.displayWidth));
+  const bottom = Math.min(view.viewportHeight, Math.ceil(view.offsetY + view.displayHeight));
+  if (right <= left || bottom <= top) return null;
+  return { x: left, y: top, width: right - left, height: bottom - top };
 };
 
 export const sourceToScreen = (view: ViewTransform, point: Point): Point => ({

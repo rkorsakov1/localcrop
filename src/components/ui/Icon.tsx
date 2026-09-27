@@ -36,6 +36,11 @@ const paths = {
   sliders: 'M4 6h8 M15 6h1 M4 14h2 M9 14h7 M12 4v4 M6 12v4',
   eyedropper: 'M12.5 4.5l3 3 M14 3a1.5 1.5 0 0 1 2.1 2.1l-2 2-2.1-2.1z M12 7 5 14v2h2l7-7',
   zip: 'M5 2h7l4 4v12H5zM9 4h1M9 6h1M9 8h1M9 10h1v3H9z',
+  minus: 'M4 10h12',
+  fit: 'M3.5 7.5v-4h4 M12.5 3.5h4v4 M16.5 12.5v4h-4 M7.5 16.5h-4v-4',
+  grip: 'M7.5 5h.01 M12.5 5h.01 M7.5 10h.01 M12.5 10h.01 M7.5 15h.01 M12.5 15h.01',
+  pencil: 'M12.5 4.5l3 3 M14 3a1.5 1.5 0 0 1 2.1 2.1L7 14.2 3.5 15.5l1.3-3.5z',
+  pdf: 'M5 2h7l4 4v12H5z M12 2v4h4 M7.5 11h5 M7.5 14h5',
 } as const;
 
 export type IconName = keyof typeof paths;

@@ -6,6 +6,7 @@ export const FORMAT_EXTENSIONS: Record<OutputFormat, string> = {
   webp: 'webp',
   avif: 'avif',
   png: 'png',
+  pdf: 'pdf',
 };
 
 export const FORMAT_MIME: Record<OutputFormat, string> = {
@@ -13,6 +14,7 @@ export const FORMAT_MIME: Record<OutputFormat, string> = {
   webp: 'image/webp',
   avif: 'image/avif',
   png: 'image/png',
+  pdf: 'application/pdf',
 };
 
 export const FORMAT_LABELS: Record<OutputFormat, string> = {
@@ -20,6 +22,7 @@ export const FORMAT_LABELS: Record<OutputFormat, string> = {
   webp: 'WebP',
   avif: 'AVIF',
   png: 'PNG',
+  pdf: 'PDF',
 };
 
 /** 1536 → "1.5 KB". Uses 1 KB = 1000 B to match what file managers show on macOS/web. */

@@ -7,6 +7,7 @@ import type { Preset, QueueItem } from '../../lib/types';
 import { getItemPreset } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
 import { canCopyImages, canShareImage, copyImageToClipboard, shareImage } from '../../state/clipboard';
+import { outputImage } from '../../state/encoding';
 import { clearDownloadedModels } from '../../worker/segmentClient';
 import { OutputCard } from '../preview/OutputCard';
 import { PresetForm } from '../presets/PresetForm';
@@ -190,7 +191,7 @@ export const useCopyOutput = () => {
       return;
     }
     try {
-      await copyImageToClipboard(output.blob);
+      await copyImageToClipboard(outputImage(output));
       notify('success', t.output.copied);
     } catch (error) {
       if (canShareImage(output.blob, outputFilename(item))) {
@@ -206,8 +207,10 @@ export const useCopyOutput = () => {
 const BatchExport = () => {
   const { state } = useApp();
   const t = useT();
-  const { exportZip, exportToFolder, progress } = useBatchExport();
+  const { exportZip, exportPdf, exportToFolder, progress } = useBatchExport();
   const count = state.items.length;
+  // Leads when every image is set to PDF; otherwise it's a secondary choice next to the ZIP.
+  const allPdf = count > 0 && state.items.every((item) => getItemPreset(state, item).format === 'pdf');
 
   // Show export progress in the tab title, so it's visible from another tab.
   useEffect(() => {
@@ -240,18 +243,23 @@ const BatchExport = () => {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="flex-1 text-xs text-ink-3">
+    <div className="space-y-1.5">
+      <p className="text-xs text-ink-3">
         {t.batch.allImages} · <span className="font-mono">{count}</span>
-      </span>
-      <Button size="sm" onClick={exportZip} title={t.batch.exportZipTitle}>
-        {t.batch.exportZip}
-      </Button>
-      {supportsDirectoryExport() ? (
-        <Button size="sm" variant="ghost" onClick={exportToFolder}>
-          {t.batch.saveToFolder}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button size="sm" variant={allPdf ? 'ghost' : 'secondary'} onClick={exportZip} title={t.batch.exportZipTitle}>
+          {t.batch.exportZip}
         </Button>
-      ) : null}
+        <Button size="sm" variant={allPdf ? 'secondary' : 'ghost'} onClick={exportPdf} title={t.batch.onePdfTitle} className={cn({ 'order-first': allPdf })}>
+          {t.batch.onePdf}
+        </Button>
+        {supportsDirectoryExport() ? (
+          <Button size="sm" variant="ghost" onClick={exportToFolder}>
+            {t.batch.saveToFolder}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 };

@@ -68,7 +68,7 @@ export const de: Messages = {
     headline: 'Bilder ablegen, einfügen oder auswählen.',
     subline: 'Nichts verlässt dein Gerät.',
     pasteHint: 'Bild oder URL einfügen',
-    foldersHint: 'Auch Ordner und ZIP-Dateien',
+    foldersHint: 'Auch Ordner, ZIP-Dateien und PDFs',
     formats: 'Unterstützte Formate',
     dropTitle: 'Zum Hinzufügen ablegen',
     dropPrivacy: 'Dateien und Ordner werden lokal gelesen – nichts wird hochgeladen.',
@@ -105,6 +105,8 @@ export const de: Messages = {
     waiting: 'Wartet',
     applyToAll: (preset) => `„${preset}“ auf alle anwenden`,
     appliedToAll: (preset) => `${preset} auf alle Bilder angewendet.`,
+    readingPdf: (name) => `Seiten von ${name} werden gerendert …`,
+    pdfTruncated: (name, used, total) => `${name} hat ${total} Seiten; nur die ersten ${used} wurden hinzugefügt.`,
     added: (count) => `${plural(count, 'Bild', 'Bilder')} hinzugefügt.`,
     large: (name, megapixels) => `${name} hat ${megapixels} MP. Sehr große Bilder können das Speicherlimit des Browsers erreichen.`,
   },
@@ -217,6 +219,10 @@ export const de: Messages = {
     exportZipTitle: 'Jedes Bild mit eigener Vorlage, eigenem Zuschnitt und eigenen Bearbeitungen.',
     saveToFolder: 'In Ordner speichern',
     encoding: (done, total) => `Kodiere ${done} von ${total} …`,
+    buildingPdf: (total) => `PDF mit ${total} Seiten wird erstellt …`,
+    onePdf: 'Eine PDF',
+    onePdfTitle: 'Alle Bilder als Seiten einer PDF, in Reihenfolge der Liste. Andere Formate als JPEG werden für die Seiten in JPEG umgewandelt.',
+    exportedPdf: (count, size) => `${count} Bilder als eine PDF (${size}) gespeichert.`,
     packing: (total) => `Erstelle ZIP mit ${total} Dateien …`,
     saving: (done, total) => `Speichere ${done} von ${total} …`,
     exported: (count, size) => `${count} Bilder als ZIP (${size}) exportiert.`,
@@ -412,6 +418,8 @@ export const de: Messages = {
   errors: {
     // Ingest and URL fetch
     'No images found in this ZIP.': 'Keine Bilder in dieser ZIP-Datei.',
+    'This PDF is password-protected. Remove the password first.': 'Diese PDF ist passwortgeschützt. Entferne zuerst das Passwort.',
+    'The PDF viewer could not be loaded.': 'Der PDF-Leser konnte nicht geladen werden.',
     'JPEG XL can only be opened in Safari. Convert it to JPEG or PNG first, or use Safari.':
       'JPEG XL lässt sich nur in Safari öffnen. Wandle es zuerst in JPEG oder PNG um oder nutze Safari.',
     'This SVG couldn’t be drawn. It may reference external files or be malformed.':

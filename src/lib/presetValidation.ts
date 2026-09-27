@@ -8,7 +8,7 @@ export const MAX_DIMENSION = 16384;
 const MAX_NAME_LENGTH = 80;
 const MAX_TEMPLATE_LENGTH = 200;
 
-const FORMATS: readonly OutputFormat[] = ['jpeg', 'webp', 'avif', 'png'];
+const FORMATS: readonly OutputFormat[] = ['jpeg', 'webp', 'avif', 'png', 'pdf'];
 const FITS: readonly FitMode[] = ['cover', 'contain', 'free'];
 
 export type PresetValidation =

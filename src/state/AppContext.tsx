@@ -5,8 +5,10 @@ import { formatBytes, formatSavings } from '../lib/format';
 import type { Cutout, EncodedOutput, QueueItem } from '../lib/types';
 import { createWorkerClient, type Processor } from '../worker/workerClient';
 import { appReducer, createInitialState, getItemPreset, type AppAction, type AppState, type Notice } from './appReducer';
+import { revokeOutput } from './encoding';
 import { snapshotBitmaps, snapshotOf, withHistory, type HistoryAction } from './history';
-import { decodeImage, expandArchives, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
+import { decodeFile, expandArchives, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
+import { MAX_PDF_PAGES } from './pdf';
 import { loadPersistedState, savePersistedState } from './storage';
 
 type AppContextValue = {
@@ -82,7 +84,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (dead.length > 0) setTimeout(() => dead.forEach((bitmap) => bitmap.close()), 1000);
 
     const present = new Set(state.items.map((item) => item.id));
-    for (const item of previousItems.current) if (!present.has(item.id) && item.output) URL.revokeObjectURL(item.output.url);
+    for (const item of previousItems.current) if (!present.has(item.id)) revokeOutput(item.output);
     previousItems.current = state.items;
   }, [state]);
 
@@ -99,23 +101,35 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         files.map(async (file) => {
           const blob = file instanceof File ? file : file.blob;
           const name = file.name;
+          // Rendering pages (and the first download of the PDF reader) can take a moment.
+          if (blob.type === 'application/pdf' || /\.pdf$/i.test(name)) notify('info', messages().queue.readingPdf(name));
           try {
-            return await decodeImage(blob, name);
+            const result = await decodeFile(blob, name);
+            if (result.pdfPages !== undefined && result.pdfPages > MAX_PDF_PAGES) {
+              notify('warning', messages().queue.pdfTruncated(name, MAX_PDF_PAGES, result.pdfPages), undefined, true);
+            }
+            return result.images;
           } catch (error) {
             failures.push({ name, message: errorText(error) });
-            return null;
+            return [];
           }
         }),
       );
 
-      const items = decoded.flatMap((image) => {
-        if (!image) return [];
+      const items = decoded.flat().flatMap((image) => {
         if (image.bitmap.width * image.bitmap.height > LARGE_IMAGE_PIXELS) {
           const megapixels = Math.round((image.bitmap.width * image.bitmap.height) / 1_000_000);
           notify('warning', messages().queue.large(image.name, megapixels));
         }
         return [
-          { id: crypto.randomUUID(), sourceName: image.name, sourceBytes: image.bytes, sourceType: image.type, sourceBitmap: image.bitmap },
+          {
+            id: crypto.randomUUID(),
+            sourceName: image.name,
+            sourceBytes: image.bytes,
+            sourceType: image.type,
+            sourceDpi: image.dpi ?? null,
+            sourceBitmap: image.bitmap,
+          },
         ];
       });
 

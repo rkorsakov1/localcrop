@@ -1,4 +1,5 @@
-export type OutputFormat = 'jpeg' | 'webp' | 'avif' | 'png';
+/** 'pdf' is a JPEG on a PDF page sized to the image. */
+export type OutputFormat = 'jpeg' | 'webp' | 'avif' | 'png' | 'pdf';
 /** cover = crop to the exact size; contain = fit and pad; free = any crop shape, scaled to fit within width × height. */
 export type FitMode = 'cover' | 'contain' | 'free';
 
@@ -46,6 +47,12 @@ export type EncodedOutput = {
   quality: number;
   encoder: 'wasm' | 'native';
   warning: string | null;
+  /** An image URL for previews: `url` itself, or for a PDF the JPEG on its page. */
+  previewUrl: string;
+  /** PDF output: the JPEG on its page, so several outputs can be combined into one PDF. */
+  pdfImage: Blob | null;
+  /** Resolution for placing the output on a PDF page (the source's, carried through crop and resize; else 96). */
+  dpi: number;
 };
 
 /** A background cut-out that can still be refined. All bitmaps are immutable snapshots, so undo can swap them. */
@@ -66,6 +73,8 @@ export type QueueItem = {
   sourceName: string;
   sourceBytes: number;
   sourceType: string;
+  /** Pixels per inch of the source when known (PDF pages), for sizing PDF output pages; null = 96. */
+  sourceDpi: number | null;
   /** decoded, EXIF orientation applied */
   sourceBitmap: ImageBitmap;
   /** after retouch / bg removal; null = none */

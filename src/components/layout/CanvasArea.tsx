@@ -122,7 +122,7 @@ const RatioSelect = ({ onPick, imageRatio }: { onPick: (ratio: number) => void; 
           onPick(value === 'original' ? imageRatio : a / b);
         }}
         className={cn(
-          'h-7.5 appearance-none rounded-md bg-transparent pr-7 pl-2.5 text-[13px] font-medium text-ink-2 hover:bg-sunken hover:text-ink max-lg:h-10',
+          'h-7.5 max-w-36 appearance-none rounded-md bg-transparent pr-7 pl-2.5 text-[13px] field-sizing-content font-medium text-ink-2 hover:bg-sunken hover:text-ink max-lg:h-10',
           focusRing,
         )}
       >

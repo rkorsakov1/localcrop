@@ -120,6 +120,26 @@ const packages = [
     dest: 'public/vendor/libheif@1.23.2',
     files: [{ from: 'libheif-wasm/libheif-bundle.mjs' }, { from: 'LICENSE' }, { from: 'libheif-wasm/LICENSE', to: 'LICENSE.libheif' }],
   },
+  {
+    name: 'pdfjs-dist',
+    version: '6.3.289',
+    license: 'Apache-2.0 (pdf.js); fonts, CMaps, OpenJPEG, JBIG2 and QCMS under the LICENSE files next to them',
+    url: 'https://github.com/mozilla/pdf.js',
+    // Loaded by the page only when a PDF arrives, to render its pages as images.
+    dest: 'public/vendor/pdfjs@6.3.289',
+    files: [
+      // The legacy build: the modern one needs the newest JS features (e.g. Math.sumPrecise).
+      { from: 'legacy/build/pdf.min.mjs' },
+      { from: 'legacy/build/pdf.worker.min.mjs' },
+      { from: 'LICENSE' },
+      { from: 'standard_fonts', to: 'standard_fonts' },
+      { from: 'cmaps', to: 'cmaps' },
+      { from: 'iccs', to: 'iccs' },
+      ...['jbig2.wasm', 'openjpeg.wasm', 'qcms_bg.wasm', 'LICENSE_JBIG2', 'LICENSE_OPENJPEG', 'LICENSE_PDFJS_JBIG2', 'LICENSE_PDFJS_OPENJPEG', 'LICENSE_PDFJS_QCMS', 'LICENSE_QCMS'].map(
+        (file) => ({ from: `wasm/${file}`, to: `wasm/${file}` }),
+      ),
+    ],
+  },
 ];
 
 /**
@@ -152,7 +172,8 @@ const vendorPackages = () => {
       mkdirSync(destDir, { recursive: true });
       for (const file of pkg.files) {
         const target = join(destDir, file.to ?? file.from.split('/').pop());
-        cpSync(join(srcDir, file.from), target);
+        // Recursive: some entries are whole folders (pdf.js fonts, CMaps).
+        cpSync(join(srcDir, file.from), target, { recursive: true });
         if (file.dts) writeFileSync(target.replace(/\.js$/, '.d.ts'), file.dts);
       }
       for (const download of pkg.extraDownloads ?? []) {

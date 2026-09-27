@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { QueueItem } from '../lib/types';
 import { useApp } from '../state/AppContext';
-import { encodeQueueItem, toEncodedOutput } from '../state/encoding';
+import { encodeQueueItem, revokeOutput, toEncodedOutput } from '../state/encoding';
 import { isCancelledError } from '../worker/protocol';
 import type { EncodeHandle } from '../worker/workerClient';
 
@@ -47,9 +47,9 @@ export const useDebouncedEncode = (): PreviewReference | null => {
           result.reference?.close();
           return;
         }
-        const previousUrl = current.output?.url;
+        const previous = current.output;
         dispatch({ type: 'encodeFinished', id: item.id, revision, output: toEncodedOutput(result) });
-        if (previousUrl) URL.revokeObjectURL(previousUrl);
+        revokeOutput(previous);
         if (result.reference) {
           const bitmap = result.reference;
           setReference((previous) => {

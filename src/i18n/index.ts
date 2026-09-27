@@ -53,6 +53,8 @@ const PATTERNS: [RegExp, (match: RegExpExecArray) => string][] = [
   [/^(.+) files aren’t supported\. Export a JPEG, PNG or TIFF first\.$/, (m) => `${m[1]}-Dateien werden nicht unterstützt. Exportiere zuerst ein JPEG, PNG oder TIFF.`],
   [/^Unsupported format\. Supported: (.+)\.$/, (m) => `Nicht unterstütztes Format. Unterstützt: ${m[1]}.`],
   [/^Couldn’t decode this HEIC image: (.+)$/, (m) => `Dieses HEIC-Bild konnte nicht dekodiert werden: ${translateError(m[1] ?? '')}`],
+  [/^Couldn’t read this PDF: (.+)$/, (m) => `Diese PDF konnte nicht gelesen werden: ${translateError(m[1] ?? '')}`],
+  [/^Couldn’t render this PDF: (.+)$/, (m) => `Diese PDF konnte nicht gerendert werden: ${translateError(m[1] ?? '')}`],
   [/^The server answered (.+?)\.?$/, (m) => `Der Server antwortete mit ${m[1]}.`],
   [/^That URL returned (.+), not an image\.$/, (m) => `Diese URL liefert ${m[1]}, kein Bild.`],
   [/^TIFF compression (\d+) isn’t supported\.$/, (m) => `TIFF-Kompression ${m[1]} wird nicht unterstützt.`],

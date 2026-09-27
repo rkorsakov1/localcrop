@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adaptCropToAspect,
   computeAutoCrop,
+  describeRatio,
   getViewTransform,
   moveCrop,
   resizeCropFromCorner,
@@ -11,6 +13,7 @@ import {
   targetAspect,
   transformedSize,
   transformedToSource,
+  visibleRect,
 } from './cropMath';
 import type { Rotation } from './types';
 
@@ -224,5 +227,50 @@ describe('transformedToSource', () => {
         expect(center.y).toBeCloseTo(10);
       }
     }
+  });
+});
+
+describe('adaptCropToAspect', () => {
+  const bounds = { width: 4000, height: 3000 };
+
+  it('reshapes around the same center with about the same area', () => {
+    const crop = { x: 1000, y: 1000, width: 1600, height: 900 };
+    const next = adaptCropToAspect(crop, 16 / 10, bounds);
+    expect(next.width / next.height).toBeCloseTo(1.6);
+    expect(next.x + next.width / 2).toBeCloseTo(1800);
+    expect(next.y + next.height / 2).toBeCloseTo(1450);
+    expect(next.width * next.height).toBeCloseTo(1600 * 900);
+  });
+
+  it('shrinks to fit and stays inside the image', () => {
+    const next = adaptCropToAspect({ x: 0, y: 0, width: 4000, height: 3000 }, 3, bounds);
+    expect(next.width).toBeCloseTo(4000);
+    expect(next.height).toBeCloseTo(4000 / 3);
+    expect(next.y).toBeGreaterThanOrEqual(0);
+    expect(next.y + next.height).toBeLessThanOrEqual(3000);
+  });
+});
+
+describe('describeRatio', () => {
+  it('names common ratios in either orientation', () => {
+    expect(describeRatio(1920, 1080)).toBe('16:9');
+    expect(describeRatio(1080, 1920)).toBe('9:16');
+    expect(describeRatio(1920, 1200)).toBe('16:10');
+    expect(describeRatio(1000, 1000)).toBe('1:1');
+    expect(describeRatio(1081, 1350)).toBe('4:5');
+  });
+
+  it('falls back to a decimal ratio', () => {
+    expect(describeRatio(1470, 1000)).toBe('1.47:1');
+    expect(describeRatio(1000, 1470)).toBe('1:1.47');
+  });
+});
+
+describe('visibleRect', () => {
+  it('clips the displayed image to the container', () => {
+    const view = getViewTransform({ container: { width: 800, height: 600 }, image: { width: 4000, height: 2000 }, zoom: 1, pan: { x: 0, y: 0 }, devicePixelRatio: 1 });
+    expect(visibleRect(view)).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+    const fitted = getViewTransform({ container: { width: 800, height: 600 }, image: { width: 4000, height: 2000 }, zoom: 'fit', devicePixelRatio: 1 });
+    expect(visibleRect(fitted)).toEqual({ x: 0, y: 100, width: 800, height: 400 });
   });
 });

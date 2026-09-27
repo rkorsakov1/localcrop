@@ -158,7 +158,7 @@ const encodeWith = async (load: () => Promise<EncoderModule>, image: RawImage, o
 };
 
 /** Encodes RGBA pixels. `quality` is 0–100. PNG isn't handled here (see optimisePng). */
-export const encodeRaw = (format: Exclude<OutputFormat, 'png'>, image: RawImage, quality: number): Promise<ArrayBuffer> => {
+export const encodeRaw = (format: Exclude<OutputFormat, 'png' | 'pdf'>, image: RawImage, quality: number): Promise<ArrayBuffer> => {
   if (format === 'jpeg') return encodeWith(loadJpeg, image, { ...MOZJPEG_DEFAULTS, quality, chroma_quality: quality });
   if (format === 'webp') return encodeWith(loadWebp, image, { ...WEBP_DEFAULTS, quality });
   return encodeWith(loadAvif, image, { ...AVIF_DEFAULTS, quality });
@@ -172,7 +172,7 @@ export const optimisePng = async (png: ArrayBuffer): Promise<ArrayBuffer> => {
 
 /** Starts loading a codec ahead of time (e.g. when the user picks a format). */
 export const preloadCodec = (format: OutputFormat): Promise<unknown> => {
-  if (format === 'jpeg') return loadJpeg();
+  if (format === 'jpeg' || format === 'pdf') return loadJpeg();
   if (format === 'webp') return loadWebp();
   if (format === 'avif') return loadAvif();
   return loadOxipng();

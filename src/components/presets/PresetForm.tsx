@@ -16,7 +16,7 @@ type PresetFormProps = {
   onChange: (patch: Partial<Preset>) => void;
 };
 
-const FORMAT_OPTIONS = (['jpeg', 'webp', 'avif', 'png'] as const).map((value) => ({ value, label: FORMAT_LABELS[value] }));
+const FORMAT_OPTIONS = (['jpeg', 'webp', 'avif', 'png', 'pdf'] as const).map((value) => ({ value, label: FORMAT_LABELS[value] }));
 const fitOptions = (): { value: FitMode; label: string; title: string }[] => {
   const f = messages().form;
   return [

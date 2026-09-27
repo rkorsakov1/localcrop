@@ -54,7 +54,7 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
         <div className={cn('flex h-[47px] w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-sm', output ? checkerboardClass : 'bg-sunken')}>
           {output ? (
             <img
-              src={output.url}
+              src={output.previewUrl}
               alt={t.output.preview(output.width, output.height)}
               draggable={!stale}
               title={stale ? undefined : t.output.dragOut}

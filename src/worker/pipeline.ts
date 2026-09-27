@@ -6,6 +6,7 @@ import { drawTransformed, get2d, hasTransparency, isIdentityTransform, type Surf
 import { FORMAT_LABELS, FORMAT_MIME } from '../lib/format';
 import { flatFill, harmonicFill, ringMedianColor } from '../lib/inpaint';
 import { findQualityForTarget } from '../lib/qualitySearch';
+import { createPdf } from '../lib/pdfWriter';
 import { unsharpMask } from '../lib/sharpen';
 import type { CropRect, OutputFormat } from '../lib/types';
 import { encodeRaw, optimisePng } from './codecs';
@@ -95,9 +96,12 @@ const resample = async (
   return result;
 };
 
-type Encoded = { blob: Blob; encoder: 'wasm' | 'native' };
+/** `image`: for PDF output, the JPEG placed on the page. */
+type Encoded = { blob: Blob; encoder: 'wasm' | 'native'; image?: Blob };
 
-const nativeEncode = async (env: CanvasEnv, canvas: Surface, format: OutputFormat, quality: number): Promise<Blob> => {
+type LossyFormat = Exclude<OutputFormat, 'png' | 'pdf'>;
+
+const nativeEncode = async (env: CanvasEnv, canvas: Surface, format: LossyFormat, quality: number): Promise<Blob> => {
   const mime = FORMAT_MIME[format];
   const blob = await env.toBlob(canvas, mime, quality / 100);
   // Browsers silently fall back to PNG for types they can't encode (e.g. AVIF).
@@ -116,7 +120,7 @@ const encodePng = async (env: CanvasEnv, canvas: Surface): Promise<Encoded> => {
 };
 
 /** Encodes at one quality, falling back to the browser encoder if the wasm codec fails to load. */
-const createLossyEncoder = (env: CanvasEnv, canvas: Surface, format: Exclude<OutputFormat, 'png'>) => {
+const createLossyEncoder = (env: CanvasEnv, canvas: Surface, format: LossyFormat) => {
   let pixels: ImageData | null = null;
   let useNative = false;
   return async (quality: number): Promise<Encoded> => {
@@ -134,6 +138,22 @@ const createLossyEncoder = (env: CanvasEnv, canvas: Surface, format: Exclude<Out
   };
 };
 
+/** Wraps each JPEG in a one-page PDF sized to the image at `dpi`. */
+const wrapInPdf =
+  (encodeJpeg: (quality: number) => Promise<Encoded>, dpi: number) =>
+  async (quality: number): Promise<Encoded> => {
+    const jpeg = await encodeJpeg(quality);
+    const pdf = createPdf([{ jpeg: new Uint8Array(await jpeg.blob.arrayBuffer()), dpi }]);
+    return { blob: new Blob([pdf], { type: 'application/pdf' }), encoder: jpeg.encoder, image: jpeg.blob };
+  };
+
+/**
+ * Resolution of a PDF output page. A source with a known resolution (a PDF page) keeps its
+ * physical size through crops and resizes; anything else is placed at 96 dpi.
+ */
+export const outputDpi = (sourceDpi: number | null, sourceWidth: number, drawWidth: number): number =>
+  sourceDpi ? (sourceDpi * drawWidth) / sourceWidth : 96;
+
 export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: Checkpoint): Promise<EncodeResult> => {
   const { settings } = job;
   const transformed = applyTransform(env, job);
@@ -148,7 +168,7 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
   const padded =
     geometry.drawRect.width !== geometry.outWidth || geometry.drawRect.height !== geometry.outHeight;
 
-  if (settings.format === 'jpeg' || padded) {
+  if (settings.format === 'jpeg' || settings.format === 'pdf' || padded) {
     // Padding for contain mode; for JPEG this also composites any transparency over the matte.
     const needsMatte = padded || hasTransparency(get2d(resized).getImageData(0, 0, resized.width, resized.height).data);
     if (needsMatte) {
@@ -167,6 +187,7 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
   }
 
   const reference = job.wantReference ? await createImageBitmap(output) : null;
+  const dpi = outputDpi(job.sourceDpi, geometry.sourceRect.width, geometry.drawRect.width);
   await checkpoint();
 
   let encoded: Encoded;
@@ -177,7 +198,8 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
     encoded = await encodePng(env, output);
     quality = 100;
   } else {
-    const encodeAt = createLossyEncoder(env, output, settings.format);
+    const lossy = createLossyEncoder(env, output, settings.format === 'pdf' ? 'jpeg' : settings.format);
+    const encodeAt = settings.format === 'pdf' ? wrapInPdf(lossy, dpi) : lossy;
     if (settings.targetMaxBytes) {
       const attempts = new Map<number, Encoded>();
       const search = await findQualityForTarget(async (candidate) => {
@@ -208,6 +230,8 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
     warning,
     upscaleCapped: geometry.upscaleCapped,
     reference,
+    pdfImage: encoded.image ?? null,
+    dpi,
   };
 };
 

@@ -39,7 +39,7 @@ export const HintChip = ({ children, tone = 'neutral' }: { children: ReactNode; 
   <p
     aria-live="polite"
     className={cn(
-      'pointer-events-none absolute bottom-3 left-3 z-10 max-w-[min(26rem,calc(100%-12rem))] rounded-md px-2.5 py-1.5 text-xs shadow-float',
+      'pointer-events-none absolute bottom-3 left-3 z-10 max-w-[min(26rem,calc(100%-1.5rem))] lg:max-w-[min(26rem,calc(100%-12rem))] rounded-md px-2.5 py-1.5 text-xs shadow-float',
       tone === 'busy' ? 'bg-primary text-on-primary' : 'bg-raised text-ink-2',
     )}
   >
@@ -50,11 +50,11 @@ export const HintChip = ({ children, tone = 'neutral' }: { children: ReactNode; 
 const zoomButton = cn('flex h-7 min-w-7 items-center justify-center rounded px-1 text-ink-2 hover:bg-sunken hover:text-ink max-lg:h-10 max-lg:min-w-10', focusRing);
 
 /** Zoom out / level / zoom in / fit, floating at the bottom-right of the stage. */
-export const ZoomControl = ({ controls }: { controls: ZoomControls }) => {
+export const ZoomControl = ({ controls, className }: { controls: ZoomControls; className?: string }) => {
   const t = useT();
   const percent = Math.round(controls.zoom * 100);
   return (
-    <div role="group" aria-label={t.zoom.label} className="absolute right-3 bottom-3 z-10 flex items-center gap-0.5 rounded-md bg-raised p-0.5 shadow-float">
+    <div role="group" aria-label={t.zoom.label} className={cn('absolute right-3 bottom-3 z-10 flex items-center gap-0.5 rounded-md bg-raised p-0.5 shadow-float max-lg:top-3 max-lg:bottom-auto', className)}>
       <button type="button" className={zoomButton} onClick={controls.zoomOut} aria-label={t.zoom.out} title={t.zoom.outTitle} aria-keyshortcuts="Control+Minus Meta+Minus">
         <Icon name="minus" />
       </button>

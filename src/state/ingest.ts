@@ -4,14 +4,15 @@ import { decodeRaw, sniffFormat, svgIntrinsicSize, svgRasterSize, type SniffedKi
 import type { RawImage } from '../lib/decoders/types';
 import { isZip, unzip } from '../lib/unzip';
 import { decodeHeif } from '../worker/heifClient';
+import { isPdf, renderPdf } from './pdf';
 
 const IMAGE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'jfif', 'pjpeg', 'pjp', 'png', 'apng', 'webp', 'avif', 'gif', 'bmp', 'dib', 'ico', 'cur', 'svg',
-  'tif', 'tiff', 'tga', 'pbm', 'pgm', 'ppm', 'pnm', 'pam', 'qoi', 'heic', 'heif', 'jxl',
+  'tif', 'tiff', 'tga', 'pbm', 'pgm', 'ppm', 'pnm', 'pam', 'qoi', 'heic', 'heif', 'jxl', 'pdf',
 ]);
 
-/** For <input type=file accept>: image/* alone hides .tga, .qoi, .pnm and (on some systems) .heic. ZIPs are unpacked. */
-export const FILE_INPUT_ACCEPT = ['image/*', ...[...IMAGE_EXTENSIONS].map((extension) => `.${extension}`), '.zip', 'application/zip'].join(',');
+/** For <input type=file accept>: image/* alone hides .tga, .qoi, .pnm and (on some systems) .heic. ZIPs are unpacked, PDF pages rendered. */
+export const FILE_INPUT_ACCEPT = ['image/*', 'application/pdf', ...[...IMAGE_EXTENSIONS].map((extension) => `.${extension}`), '.zip', 'application/zip'].join(',');
 
 const isZipName = (name: string, type = ''): boolean => extensionOf(name) === 'zip' || type === 'application/zip' || type === 'application/x-zip-compressed';
 
@@ -47,10 +48,11 @@ export const expandArchives = async (files: readonly Incoming[], depth = 0): Pro
 };
 
 /** Shown in the empty state. */
-export const SUPPORTED_FORMAT_LABELS = ['JPEG', 'PNG', 'WebP', 'AVIF', 'HEIC', 'GIF', 'TIFF', 'BMP', 'SVG', 'ICO', 'TGA', 'QOI', 'PNM'];
+export const SUPPORTED_FORMAT_LABELS = ['JPEG', 'PNG', 'WebP', 'AVIF', 'HEIC', 'PDF', 'GIF', 'TIFF', 'BMP', 'SVG', 'ICO', 'TGA', 'QOI', 'PNM'];
 export const LARGE_IMAGE_PIXELS = 50_000_000;
 
-export type Decoded = { bitmap: ImageBitmap; name: string; bytes: number; type: string };
+/** `dpi`: known source resolution (PDF pages are rendered at a chosen dpi). */
+export type Decoded = { bitmap: ImageBitmap; name: string; bytes: number; type: string; dpi?: number };
 export type DecodeFailure = { name: string; message: string };
 
 const extensionOf = (name: string): string => {
@@ -61,12 +63,12 @@ const extensionOf = (name: string): string => {
 
 /** Quick filter for folder contents: skips obvious non-images like .DS_Store or .txt. */
 export const looksLikeImageFile = (file: File): boolean =>
-  file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(extensionOf(file.name)) || isZipName(file.name, file.type);
+  file.type.startsWith('image/') || file.type === 'application/pdf' || IMAGE_EXTENSIONS.has(extensionOf(file.name)) || isZipName(file.name, file.type);
 
 const unsupportedMessage = (name: string, kind: SniffedKind): string => {
   if (kind === 'jxl') return 'JPEG XL can only be opened in Safari. Convert it to JPEG or PNG first, or use Safari.';
   const extension = extensionOf(name);
-  if (['psd', 'raw', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'orf', 'rw2', 'pdf', 'eps', 'ai'].includes(extension)) {
+  if (['psd', 'raw', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'orf', 'rw2', 'eps', 'ai'].includes(extension)) {
     return `${extension.toUpperCase()} files aren’t supported. Export a JPEG, PNG or TIFF first.`;
   }
   return `Unsupported format. Supported: ${SUPPORTED_FORMAT_LABELS.join(', ')}.`;
@@ -132,6 +134,19 @@ export const decodeImage = async (blob: Blob, name: string): Promise<Decoded> =>
   });
   if (raw) return done(await fromRaw(raw));
   throw new Error(unsupportedMessage(name, kind));
+};
+
+/** A PDF's rendered pages, and how many pages it has in total (only the first MAX_PDF_PAGES are rendered). */
+export type DecodedFile = { images: Decoded[]; pdfPages?: number };
+
+/** Like decodeImage, but a PDF gives one image per page. */
+export const decodeFile = async (blob: Blob, name: string): Promise<DecodedFile> => {
+  const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+  if (!isPdf(head)) return { images: [await decodeImage(blob, name)] };
+  const { pages, total } = await renderPdf(blob, name);
+  // The file's size is shared out between its pages, so savings stay honest in total.
+  const bytes = Math.round(blob.size / Math.max(1, pages.length));
+  return { images: pages.map((page) => ({ bitmap: page.bitmap, name: page.name, bytes, type: 'application/pdf', dpi: page.dpi })), pdfPages: total };
 };
 
 const readEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>

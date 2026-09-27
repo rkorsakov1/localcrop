@@ -47,7 +47,7 @@ export type AppState = {
   history: History;
 };
 
-export type NewItem = Pick<QueueItem, 'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceBitmap'>;
+export type NewItem = Pick<QueueItem, 'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceDpi' | 'sourceBitmap'>;
 
 export type AppAction =
   | { type: 'addItems'; items: NewItem[] }

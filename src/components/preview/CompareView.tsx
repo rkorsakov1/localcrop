@@ -146,7 +146,7 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
             <>
               <div aria-hidden="true" className={cn('absolute', checkerboardClass)} style={layerStyle} />
               <img
-                src={output.url}
+                src={output.previewUrl}
                 alt={t.compare.encodedAlt}
                 draggable={false}
                 className={cn('absolute max-w-none', { '[image-rendering:pixelated]': pixelated })}
@@ -194,7 +194,8 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
             </>
           ) : null}
         </div>
-        {output ? <ZoomControl controls={controls} /> : <HintChip>{t.compare.pending}</HintChip>}
+        {/* On phones the toolbar's zoom buttons do the job; the chip would cover the labels. */}
+        {output ? <ZoomControl controls={controls} className="max-lg:hidden" /> : <HintChip>{t.compare.pending}</HintChip>}
       </Stage>
     </>
   );

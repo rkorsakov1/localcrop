@@ -142,7 +142,7 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
       setCached(true);
       await commit({ base: bitmap, background: null, provider }, createMaskCanvas(bitmap.width, bitmap.height, alpha));
       dispatch({ type: 'announce', message: messages().background.done(provider === 'webgpu') });
-      if (preset.format === 'jpeg') setJpegPrompt(true);
+      if (preset.format === 'jpeg' || preset.format === 'pdf') setJpegPrompt(true);
     } catch (error) {
       notify('error', messages().background.failed(errorText(error)));
     } finally {

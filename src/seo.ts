@@ -32,7 +32,8 @@ export const SEO: Record<'en' | 'de', Seo> = {
     features: [
       'Crop with a locked or free aspect ratio',
       'Compress to a target file size',
-      'Convert HEIC, TIFF, SVG, PNG, WebP and AVIF',
+      'Convert HEIC, TIFF, SVG, PDF, PNG, WebP and AVIF',
+      'Turn PDF pages into images, or images into a PDF',
       'On-device background removal',
       'Remove objects with a retouch brush',
       'Batch export as ZIP',
@@ -64,7 +65,8 @@ export const SEO: Record<'en' | 'de', Seo> = {
     features: [
       'Zuschneiden mit festem oder freiem Seitenverhältnis',
       'Auf eine Ziel-Dateigröße komprimieren',
-      'HEIC, TIFF, SVG, PNG, WebP und AVIF umwandeln',
+      'HEIC, TIFF, SVG, PDF, PNG, WebP und AVIF umwandeln',
+      'PDF-Seiten in Bilder umwandeln oder Bilder in eine PDF',
       'Hintergrund lokal entfernen',
       'Objekte mit dem Retusche-Pinsel entfernen',
       'Stapelexport als ZIP',

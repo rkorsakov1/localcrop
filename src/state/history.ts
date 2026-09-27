@@ -7,7 +7,7 @@ import type { AppAction, AppState } from './appReducer';
 /** The parts of an image that editing changes. Outputs and encode status are derived and not kept. */
 type ItemDoc = Pick<
   QueueItem,
-  'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceBitmap' | 'editedBitmap' | 'cutout' | 'transform' | 'crop' | 'presetId' | 'overrides'
+  'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceDpi' | 'sourceBitmap' | 'editedBitmap' | 'cutout' | 'transform' | 'crop' | 'presetId' | 'overrides'
 >;
 
 export type Snapshot = { items: ItemDoc[]; presets: Preset[]; presetOrder: string[]; lastPresetId: string; selectedId: string | null };
@@ -35,6 +35,7 @@ const toDoc = (item: QueueItem): ItemDoc => ({
   sourceName: item.sourceName,
   sourceBytes: item.sourceBytes,
   sourceType: item.sourceType,
+  sourceDpi: item.sourceDpi,
   sourceBitmap: item.sourceBitmap,
   editedBitmap: item.editedBitmap,
   cutout: item.cutout,

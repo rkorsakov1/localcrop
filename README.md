@@ -26,18 +26,20 @@ Most "online image tools" upload your photos to a server. LocalCrop is a static 
 **Get images in**
 - Drop files or whole folders, pick them, paste with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd>, fetch a URL, or drop a **ZIP** and it's unpacked.
 - Opens JPEG, PNG, WebP, AVIF, GIF, BMP, ICO, **HEIC/HEIF**, **TIFF**, **SVG**, TGA, PNM and QOI, so it doubles as a format converter.
+- **PDF:** each page becomes an image (rendered with pdf.js, on your device).
 
 **Edit**
-- Crop with a locked aspect ratio, or unlock it for a free-form crop; rotate, flip, rule of thirds, fit-and-pad.
+- Crop with a locked aspect ratio, or unlock it for a free-form crop that keeps your selection; snap to common ratios, <kbd>Shift</kbd>+drag to keep one; rotate, flip, rule of thirds, fit-and-pad.
+- **Zoom and pan** like other editors: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll or pinch, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>, <kbd>Space</kbd>+drag.
 - **Retouch:** paint over an object and it's filled from its surroundings as soon as you let go, with a smooth fill that recreates gradients and soft shadows.
 - **Background removal** with an on-device model (ISNet), with live Restore/Erase brushes and an optional background color.
 - **Undo everything:** every crop, setting and brush stroke is its own step.
 
 **Export**
-- MozJPEG, WebP, AVIF and OxiPNG encoders. The size you see is the size of the file you download.
+- MozJPEG, WebP, AVIF and OxiPNG encoders, and **PDF** (a JPEG page sized to the image). The size you see is the size of the file you download.
 - **Target size:** "under 200 KB" finds the best quality that fits.
-- Presets for YouTube, Open Graph, 16:9, 1:1, 4:5, 9:16 and original size, plus your own, shareable as a link.
-- Batch export as a ZIP or straight into a folder, with filename templates.
+- Presets for YouTube, Open Graph, 16:9, 1:1, 4:5, 9:16 and original size, plus your own, shareable as a link, in the order you drag them into.
+- Batch export as a ZIP, as **one multi-page PDF**, or straight into a folder, with filename templates (and images you can rename).
 - EXIF, GPS and other metadata never reach the output, because it's rebuilt from pixels.
 
 **Everywhere**
@@ -76,6 +78,7 @@ Runtime assets are **vendored** (committed) so that a rebuild months from now pr
 | onnxruntime-web 1.30.0 (WebGPU build) | `public/vendor/ort@1.30.0/` |
 | Background-removal model (46.7 MB) | `public/models/isnet-general-use-wq8/` |
 | libheif 1.23.2 (HEIC decoding, LGPL-3.0, loaded on demand) | `public/vendor/libheif@1.23.2/` |
+| pdf.js 6.3.289 (PDF pages, Apache-2.0, loaded on demand) | `public/vendor/pdfjs@6.3.289/` |
 
 To upgrade a package, edit its version in `scripts/vendor.mjs` and run `npm run vendor`. That re-copies the files and regenerates `VENDOR.md` with SHA-256 hashes. The model's provenance and conversion (`scripts/quantize_weights.py`) are documented in `scripts/vendor-manual.md`.
 

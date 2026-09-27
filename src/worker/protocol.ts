@@ -8,6 +8,8 @@ export type EncodeJob = {
   settings: EncodeSettings;
   /** Also return the source crop resampled to the output size (for Compare view). */
   wantReference: boolean;
+  /** Source resolution when known (PDF pages); sets the physical page size of PDF output. */
+  sourceDpi: number | null;
 };
 
 export type EncodeResult = {
@@ -20,6 +22,10 @@ export type EncodeResult = {
   warning: string | null;
   upscaleCapped: boolean;
   reference: ImageBitmap | null;
+  /** PDF output: the JPEG on the page. */
+  pdfImage: Blob | null;
+  /** Resolution for a PDF page of this output. */
+  dpi: number;
 };
 
 export type FillMethod = 'flat' | 'smooth';

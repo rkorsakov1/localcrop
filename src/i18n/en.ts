@@ -234,8 +234,63 @@ export const en = {
     none: 'No exports yet this session',
     allTime: (size: string, count: number) => `· ${size} saved all time (${plural(count, 'image', 'images')})`,
     allTimeTitle: 'Across every session in this browser',
-    shortcuts: 'Shortcuts',
+    shortcuts: 'Help',
     source: 'Source on GitHub',
+  },
+  help: {
+    title: 'Help',
+    guide: 'What you can do',
+    sections: [
+      {
+        title: 'Add images',
+        items: [
+          ['Drop, pick or paste', 'files, whole folders or a ZIP, or paste an image or its URL.'],
+          ['PDFs', 'become one image per page (up to 50 pages).'],
+          ['Nothing is uploaded:', 'everything runs in your browser, and works offline once loaded.'],
+        ],
+      },
+      {
+        title: 'Crop',
+        items: [
+          ['Presets', 'set the output size and format; change any setting for just this image.'],
+          ['Unlink W × H', '(the chain icon) for a free crop that keeps your selection; the Ratio menu snaps to 16:9, 4:5, …'],
+          ['Shift + drag', 'a corner to keep the ratio. Rotate, flip, or fit and pad instead of cropping.'],
+          ['Zoom:', 'Ctrl + scroll or pinch; Space + drag or two fingers to pan.'],
+        ],
+      },
+      {
+        title: 'Retouch',
+        items: [
+          ['Paint over an object', 'and it is filled in as soon as you let go.'],
+          ['Flat', 'fills with one color: best on plain backgrounds, slides and scans.'],
+          ['Smooth', 'blends the surroundings: best on gradients, sky and soft shadows. Neither recreates texture.'],
+          ['Restore', 'brushes the original pixels back.'],
+        ],
+      },
+      {
+        title: 'Background',
+        items: [
+          ['Remove background', 'with an on-device model (downloaded once).'],
+          ['Restore / Erase', 'brushes refine the edge; optionally put a color behind the subject.'],
+        ],
+      },
+      {
+        title: 'Export',
+        items: [
+          ['JPEG, WebP, AVIF, PNG or PDF.', 'The size shown is the exact size of the file you get.'],
+          ['Target size', 'finds the best quality under, for example, 200 KB.'],
+          ['All images', 'as a ZIP, into a folder, or as One PDF with a page per image.'],
+          ['Drag images', 'in the list to set their order; double-click a name to rename it.'],
+        ],
+      },
+      {
+        title: 'Presets and history',
+        items: [
+          ['Manage presets', 'to make your own, drag them into order, hide built-ins, or share one as a link.'],
+          ['Undo', 'works for everything: crops, settings and each brush stroke.'],
+        ],
+      },
+    ] as { title: string; items: [string, string][] }[],
   },
   shortcuts: {
     title: 'Keyboard shortcuts',
@@ -261,7 +316,7 @@ export const en = {
     toggleErase: 'Toggle paint / erase',
     undo: 'Undo',
     redo: 'Redo',
-    help: 'This help',
+    help: 'Help and shortcuts',
     or: 'or',
     note: 'Shortcuts pause while you type in a text field.',
   },

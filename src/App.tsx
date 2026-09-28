@@ -4,12 +4,13 @@ import { Footer } from './components/layout/Footer';
 import { Notices } from './components/layout/Notices';
 import { MobileQueueStrip, QueuePanel } from './components/layout/QueuePanel';
 import { MobileDownloadBar, OutputDock, SettingsForm, useCopyOutput } from './components/layout/SettingsPanel';
-import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
+import { HelpDialog } from './components/layout/HelpDialog';
 import { LanguageToggle, ThemeToggle, useApplyTheme } from './components/layout/ThemeToggle';
 import { FilePickers, WindowDropTarget } from './components/input/DropZone';
 import { PasteListener } from './components/input/PasteListener';
 import { UrlInput } from './components/input/UrlInput';
 import { SharedPresetDialog } from './components/presets/SharedPresetDialog';
+import { Button } from './components/ui/Button';
 import { Dialog } from './components/ui/Dialog';
 import { BrandMark, Icon } from './components/ui/Icon';
 import { useDebouncedEncode } from './hooks/useDebouncedEncode';
@@ -78,7 +79,8 @@ const Shell = () => {
       <header className="sticky top-0 z-30 flex h-13 shrink-0 items-center gap-3 border-b border-line bg-panel px-4 pt-[env(safe-area-inset-top)] max-lg:h-[calc(3.25rem+env(safe-area-inset-top))] lg:static lg:gap-4">
         <div className="flex items-center gap-2.5">
           <BrandMark />
-          <h1 className="text-[15px] font-[650] tracking-[-.01em]">LocalCrop</h1>
+          {/* On phones the wordmark gives way to the editing buttons once there are images. */}
+          <h1 className={cn('text-[15px] font-[650] tracking-[-.01em]', { 'max-lg:sr-only': hasItems })}>LocalCrop</h1>
         </div>
         <PrivacyPill iconOnly={!desktop} />
         <div className="flex-1" />
@@ -91,6 +93,12 @@ const Shell = () => {
         <div className="flex items-center">
           <LanguageToggle />
           <ThemeToggle />
+          {desktop ? null : (
+            // Phones have no footer, so Help lives here.
+            <Button variant="ghost" size="icon" onClick={() => setHelpOpen(true)} aria-label={t.help.title} className="font-mono text-[15px] font-semibold">
+              ?
+            </Button>
+          )}
         </div>
       </header>
 
@@ -137,7 +145,7 @@ const Shell = () => {
       )}
 
       <Footer onShowShortcuts={() => setHelpOpen(true)} />
-      <ShortcutsDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
       <SharedPresetDialog />
       <Notices />
       <WindowDropTarget />

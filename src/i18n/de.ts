@@ -236,8 +236,63 @@ export const de: Messages = {
     none: 'In dieser Sitzung noch nichts exportiert',
     allTime: (size, count) => `· insgesamt ${size} gespart (${plural(count, 'Bild', 'Bilder')})`,
     allTimeTitle: 'Über alle Sitzungen in diesem Browser',
-    shortcuts: 'Tastenkürzel',
+    shortcuts: 'Hilfe',
     source: 'Quellcode auf GitHub',
+  },
+  help: {
+    title: 'Hilfe',
+    guide: 'Was du tun kannst',
+    sections: [
+      {
+        title: 'Bilder hinzufügen',
+        items: [
+          ['Ziehen, wählen oder einfügen:', 'Dateien, ganze Ordner oder ein ZIP, oder ein Bild bzw. seine URL einfügen.'],
+          ['PDFs', 'werden zu einem Bild pro Seite (bis zu 50 Seiten).'],
+          ['Nichts wird hochgeladen:', 'alles läuft im Browser und funktioniert einmal geladen auch offline.'],
+        ],
+      },
+      {
+        title: 'Zuschneiden',
+        items: [
+          ['Vorlagen', 'legen Ausgabegröße und Format fest; jede Einstellung lässt sich nur für dieses Bild ändern.'],
+          ['Seitenverhältnis lösen', '(Kettensymbol) für einen freien Zuschnitt, der deine Auswahl behält; das Menü „Verhältnis“ rastet auf 16:9, 4:5 … ein.'],
+          ['Umschalt + Ziehen', 'an einer Ecke behält das Verhältnis. Drehen, spiegeln oder einpassen statt zuschneiden.'],
+          ['Zoom:', 'Strg + Mausrad oder zwei Finger; Leertaste + Ziehen oder zwei Finger zum Verschieben.'],
+        ],
+      },
+      {
+        title: 'Retusche',
+        items: [
+          ['Über ein Objekt malen,', 'und es wird beim Loslassen aufgefüllt.'],
+          ['Flach', 'füllt mit einer Farbe: am besten auf einfarbigem Hintergrund, Folien und Scans.'],
+          ['Weich', 'mischt die Umgebung: am besten bei Verläufen, Himmel und weichen Schatten. Texturen entstehen dabei nicht.'],
+          ['Original', 'malt die Originalpixel zurück.'],
+        ],
+      },
+      {
+        title: 'Hintergrund',
+        items: [
+          ['Hintergrund entfernen', 'mit einem Modell auf deinem Gerät (einmalig geladen).'],
+          ['Zurückholen / Radieren', 'verfeinert die Kante; optional eine Farbe hinter das Motiv legen.'],
+        ],
+      },
+      {
+        title: 'Export',
+        items: [
+          ['JPEG, WebP, AVIF, PNG oder PDF.', 'Die angezeigte Größe ist genau die Größe der Datei.'],
+          ['Max. Dateigröße', 'findet die beste Qualität unter z. B. 200 KB.'],
+          ['Alle Bilder', 'als ZIP, in einen Ordner oder als eine PDF mit einer Seite pro Bild.'],
+          ['Bilder ziehen,', 'um ihre Reihenfolge festzulegen; Doppelklick auf den Namen benennt um.'],
+        ],
+      },
+      {
+        title: 'Vorlagen und Verlauf',
+        items: [
+          ['Vorlagen verwalten:', 'eigene anlegen, sortieren, eingebaute ausblenden oder als Link teilen.'],
+          ['Rückgängig', 'gilt für alles: Zuschnitte, Einstellungen und jeden Pinselstrich.'],
+        ],
+      },
+    ],
   },
   shortcuts: {
     title: 'Tastenkürzel',
@@ -263,7 +318,7 @@ export const de: Messages = {
     toggleErase: 'Malen / Radieren umschalten',
     undo: 'Rückgängig',
     redo: 'Wiederholen',
-    help: 'Diese Hilfe',
+    help: 'Hilfe und Tastenkürzel',
     or: 'oder',
     note: 'Beim Tippen in Textfeldern sind die Kürzel pausiert.',
   },

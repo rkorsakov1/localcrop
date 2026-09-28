@@ -244,6 +244,11 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
           onBrushChange={setBrush}
           version={version}
           onStrokeEnd={handleStrokeEnd}
+          onStrokeAbort={(rect) => {
+            const region = strokeRegion(rect, bitmap);
+            mask.getContext('2d')?.clearRect(region.x, region.y, region.width, region.height);
+            setVersion((value) => value + 1);
+          }}
           onPick={picking ? handlePick : undefined}
           label={t.retouch.brushLabel}
           zoomKey={item.id}

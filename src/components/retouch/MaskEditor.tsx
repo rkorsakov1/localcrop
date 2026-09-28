@@ -28,6 +28,8 @@ type MaskEditorProps = {
   version: number;
   /** Called when a stroke ends, with the area it touched (source pixels). The stroke is already in `mask`. */
   onStrokeEnd: (rect: Rect) => void;
+  /** A stroke was cancelled (a second finger turned it into a pinch): undo its pixels in `mask` within `rect`. */
+  onStrokeAbort?: (rect: Rect) => void;
   /** Ignore painting (e.g. while the previous stroke is being applied). */
   disabled?: boolean;
   /** Alpha variant: color shown behind the cut-out instead of the checkerboard. */
@@ -40,6 +42,9 @@ type MaskEditorProps = {
 };
 
 export const MIN_BRUSH = 2;
+/** A touch paints once it moves this far (CSS px) or stays down this long, so a two-finger pinch never paints. */
+const TOUCH_SLOP = 8;
+const TOUCH_DELAY_MS = 90;
 export const MAX_BRUSH = 800;
 
 export const defaultBrushSize = (bitmap: { width: number; height: number }): number =>
@@ -77,12 +82,24 @@ const growRect = (rect: Rect | null, point: Point, radius: number): Rect => {
  * Brush editor over the image, shared by Retouch (fill mask) and Background (alpha refinement).
  * The mask lives at source resolution and is displayed through the same view transform as the crop editor.
  */
-export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, disabled = false, backdrop = null, onPick, label, zoomKey }: MaskEditorProps) => {
+export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, onStrokeAbort, disabled = false, backdrop = null, onPick, label, zoomKey }: MaskEditorProps) => {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const image = useMemo(() => transformedSize(bitmap, transform.rotation), [bitmap, transform.rotation]);
-  const { view, controls } = useZoomView(containerRef, { image, memoryKey: `${zoomKey}:${image.width}x${image.height}` });
+  const { view, controls } = useZoomView(containerRef, {
+    image,
+    memoryKey: `${zoomKey}:${image.width}x${image.height}`,
+    onPinchStart: () => {
+      pendingTouch.current = null;
+      const current = stroke.current;
+      stroke.current = null;
+      if (current?.rect) onStrokeAbort?.(current.rect);
+      scheduleRedraw();
+    },
+  });
+  /** A finger that is down but hasn't painted yet: it may still become half of a pinch. */
+  const pendingTouch = useRef<{ pointerId: number; point: Point; clientX: number; clientY: number; at: number } | null>(null);
   const maskContext = useMemo(() => mask.getContext('2d', { willReadFrequently: true }), [mask]);
   const stroke = useRef<{ pointerId: number; last: Point; rect: Rect | null } | null>(null);
   const frame = useRef<number | null>(null);
@@ -191,12 +208,24 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.pointerType === 'touch') {
+      pendingTouch.current = { pointerId: event.pointerId, point, clientX: event.clientX, clientY: event.clientY, at: event.timeStamp };
+      return;
+    }
     startStroke(point, event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) setCursor({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    const pending = pendingTouch.current;
+    if (pending?.pointerId === event.pointerId) {
+      // Start painting once the finger clearly moves or stays down: fingers of a pinch land within a few frames.
+      const moved = Math.hypot(event.clientX - pending.clientX, event.clientY - pending.clientY);
+      if (moved < TOUCH_SLOP && event.timeStamp - pending.at < TOUCH_DELAY_MS) return;
+      pendingTouch.current = null;
+      startStroke(pending.point, pending.pointerId);
+    }
     if (stroke.current?.pointerId !== event.pointerId) return;
     const events = event.nativeEvent.getCoalescedEvents?.() ?? [event.nativeEvent];
     for (const coalesced of events.length > 0 ? events : [event.nativeEvent]) {
@@ -206,6 +235,16 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const pending = pendingTouch.current;
+    if (pending?.pointerId === event.pointerId) {
+      // A tap: one dab.
+      pendingTouch.current = null;
+      if (event.type === 'pointerup') {
+        startStroke(pending.point, pending.pointerId);
+        endStroke();
+      }
+      return;
+    }
     if (stroke.current?.pointerId !== event.pointerId) return;
     endStroke();
   };

@@ -13,6 +13,7 @@ import { inputClass } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { messages, presetLabel, translateError } from '../../i18n';
 import { useT } from '../../i18n/useT';
+import { useListReorder } from '../../hooks/useListReorder';
 
 export const describePreset = (preset: Preset): string => {
   const t = messages();
@@ -52,6 +53,9 @@ type RowProps = {
   onGripPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
   onGripKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   onShare?: () => void;
+  /** Built-ins: whether the preset menu leaves it out, and the toggle (absent when it's the last one shown). */
+  hidden?: boolean;
+  onToggleHidden?: () => void;
 };
 
 /** Drag handle; also moves the row with the up/down arrow keys. */
@@ -73,7 +77,7 @@ const Grip = ({ preset, onPointerDown, onKeyDown }: { preset: Preset; onPointerD
   );
 };
 
-const PresetRow = ({ preset, builtin, selected, dragOffset, onToggleSelected, onRename, onDuplicate, onDelete, onGripPointerDown, onGripKeyDown, onShare }: RowProps) => {
+const PresetRow = ({ preset, builtin, selected, dragOffset, onToggleSelected, onRename, onDuplicate, onDelete, onGripPointerDown, onGripKeyDown, onShare, hidden = false, onToggleHidden }: RowProps) => {
   const t = useT();
   const [name, setName] = useState(preset.name);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -95,17 +99,28 @@ const PresetRow = ({ preset, builtin, selected, dragOffset, onToggleSelected, on
 
   if (builtin) {
     return (
-      <li data-preset={preset.id} className={rowClass} style={rowStyle}>
+      <li data-reorder-id={preset.id} className={rowClass} style={rowStyle}>
         {grip}
         <span className="flex size-4 shrink-0 items-center justify-center text-ink-3" title={t.presets.builtInTitle}>
           <Icon name="lock" className="size-3.5" />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className={cn('min-w-0 flex-1', { 'opacity-50': hidden })}>
           <p className="truncate px-1.5 text-[13px] font-medium">
-            {presetLabel(preset)} <span className="ml-1 text-[11px] font-normal text-ink-3">{t.presets.builtInBadge}</span>
+            {presetLabel(preset)} <span className="ml-1 text-[11px] font-normal text-ink-3">{hidden ? t.presets.hiddenBadge : t.presets.builtInBadge}</span>
           </p>
           <p className="mt-0.5 truncate pl-1.5 font-mono text-[11px] text-ink-3">{describePreset(preset)}</p>
         </div>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          pressed={hidden}
+          disabled={!onToggleHidden}
+          onClick={onToggleHidden}
+          aria-label={t.presets.hideNamed(presetLabel(preset))}
+          title={hidden ? t.presets.showTitle : t.presets.hideTitle}
+        >
+          <Icon name={hidden ? 'eyeOff' : 'eye'} />
+        </Button>
         <Button size="icon-sm" variant="ghost" onClick={onDuplicate} aria-label={t.presets.duplicateNamed(presetLabel(preset))} title={t.presets.duplicate}>
           <Icon name="duplicate" />
         </Button>
@@ -114,7 +129,7 @@ const PresetRow = ({ preset, builtin, selected, dragOffset, onToggleSelected, on
   }
 
   return (
-    <li data-preset={preset.id} className={cn(rowClass, 'flex-wrap')} style={rowStyle}>
+    <li data-reorder-id={preset.id} className={cn(rowClass, 'flex-wrap')} style={rowStyle}>
       {grip}
       <input
         type="checkbox"
@@ -175,10 +190,14 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
   const fileInput = useRef<HTMLInputElement>(null);
   const allNames = [...BUILTIN_PRESETS, ...state.presets];
   const ordered = orderedPresets(state.presets, state.presetOrder);
+  const hiddenIds = state.prefs.hiddenPresets;
+  const visibleCount = ordered.filter((preset) => !hiddenIds.includes(preset.id)).length;
+  const toggleHidden = (preset: Preset) => {
+    const hide = !hiddenIds.includes(preset.id);
+    dispatch({ type: 'setPref', patch: { hiddenPresets: hide ? [...hiddenIds, preset.id] : hiddenIds.filter((id) => id !== preset.id) } });
+    dispatch({ type: 'announce', message: hide ? t.presets.hidden(presetLabel(preset)) : t.presets.shown(presetLabel(preset)) });
+  };
   const listRef = useRef<HTMLUListElement>(null);
-  /** A pointer drag of one row: where it would land, and the drop line's y inside the list. */
-  const [drag, setDrag] = useState<{ id: string; index: number; offset: number; indicator: number | null } | null>(null);
-
   const moveTo = (preset: Preset, index: number) => {
     dispatch({ type: 'movePreset', id: preset.id, index });
     const position = Math.min(ordered.length, Math.max(1, index + 1));
@@ -197,52 +216,10 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
     requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-grip="${preset.id}"]`)?.focus());
   };
 
-  /** Where a row dragged to `clientY` would land, among the other rows. */
-  const dropTarget = (id: string, clientY: number) => {
-    const list = listRef.current;
-    if (!list) return { index: 0, indicator: null };
-    const rows = [...list.querySelectorAll<HTMLElement>('li[data-preset]')].filter((row) => row.dataset.preset !== id);
-    const top = list.getBoundingClientRect().top;
-    let index = 0;
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect();
-      if (clientY > rect.top + rect.height / 2) index += 1;
-    }
-    const before = rows[index - 1];
-    const after = rows[index];
-    const indicator = after ? after.getBoundingClientRect().top - top : before ? before.getBoundingClientRect().bottom - top : null;
-    return { index, indicator };
-  };
-
-  const startDrag = (event: PointerEvent<HTMLButtonElement>, id: string) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const index = ordered.findIndex((preset) => preset.id === id);
-    const startY = event.clientY;
-    setDrag({ id, index, offset: 0, indicator: null });
-
-    const target = event.currentTarget;
-    const handleMove = (move: globalThis.PointerEvent) => {
-      if (move.pointerId !== event.pointerId) return;
-      const next = dropTarget(id, move.clientY);
-      setDrag((current) => (current ? { ...current, ...next, offset: move.clientY - startY } : current));
-    };
-    const handleUp = (up: globalThis.PointerEvent) => {
-      if (up.pointerId !== event.pointerId) return;
-      target.removeEventListener('pointermove', handleMove);
-      target.removeEventListener('pointerup', handleUp);
-      target.removeEventListener('pointercancel', handleUp);
-      setDrag(null);
-      if (up.type === 'pointercancel') return;
-      const { index: to } = dropTarget(id, up.clientY);
-      const preset = ordered.find((candidate) => candidate.id === id);
-      if (preset && to !== index) moveTo(preset, to);
-    };
-    target.addEventListener('pointermove', handleMove);
-    target.addEventListener('pointerup', handleUp);
-    target.addEventListener('pointercancel', handleUp);
-  };
+  const { drag, start: startDrag } = useListReorder(listRef, (id, index) => {
+    const preset = ordered.find((candidate) => candidate.id === id);
+    if (preset) moveTo(preset, index);
+  });
 
   const handleDuplicate = (preset: Preset) => {
     const copy: Preset = { ...preset, id: crypto.randomUUID(), name: uniquePresetName(t.presets.copyName(presetLabel(preset)), allNames) };
@@ -377,9 +354,14 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
                 });
                 dispatch({ type: 'announce', message: t.presets.deleted(preset.name) });
               }}
-              onGripPointerDown={(event) => startDrag(event, preset.id)}
+              onGripPointerDown={(event) => {
+                event.preventDefault();
+                startDrag(event, preset.id, ordered.indexOf(preset));
+              }}
               onGripKeyDown={(event) => handleGripKey(event, preset)}
               onShare={builtin ? undefined : () => void handleShare(preset)}
+              hidden={hiddenIds.includes(preset.id)}
+              onToggleHidden={builtin && (hiddenIds.includes(preset.id) || visibleCount > 1) ? () => toggleHidden(preset) : undefined}
             />
           );
         })}

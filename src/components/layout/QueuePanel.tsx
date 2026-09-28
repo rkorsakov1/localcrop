@@ -10,6 +10,7 @@ import { stripExtension } from '../../lib/slugify';
 import { Icon, Spinner } from '../ui/Icon';
 import { messages, presetLabel, translateError } from '../../i18n';
 import { useT } from '../../i18n/useT';
+import { useListReorder } from '../../hooks/useListReorder';
 
 const Thumbnail = ({ bitmap, width, height }: { bitmap: ImageBitmap; width: number; height: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +109,15 @@ export const QueuePanel = () => {
   const listRef = useRef<HTMLUListElement>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
+  const moveItem = (id: string, index: number) => {
+    const item = state.items.find((candidate) => candidate.id === id);
+    if (!item) return;
+    dispatch({ type: 'moveItem', id, index });
+    dispatch({ type: 'announce', message: t.queue.moved(item.sourceName, index + 1, state.items.length) });
+  };
+  // Drag a row to reorder; a short move threshold keeps plain clicks selecting.
+  const { drag, start: startDrag } = useListReorder(listRef, moveItem);
+
   const stopRenaming = (id: string) => {
     setRenaming(null);
     // Give focus back to the row, so keyboard users stay in place.
@@ -130,7 +140,7 @@ export const QueuePanel = () => {
           <Keycap>N</Keycap>
         </span>
       </div>
-      <ul ref={listRef} aria-label={t.queue.list} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+      <ul ref={listRef} aria-label={t.queue.list} className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {state.items.map((item, index) => {
           const selected = item.id === state.selectedId;
           if (renaming === item.id) {
@@ -144,15 +154,34 @@ export const QueuePanel = () => {
             );
           }
           return (
-            <li key={item.id} className="group relative">
+            <li
+              key={item.id}
+              data-reorder-id={item.id}
+              onPointerDown={(event) => {
+                // Mouse and pen only: on touch screens a vertical drag scrolls the list.
+                if (event.pointerType === 'touch' || !(event.target instanceof Element && event.target.closest('[data-item]'))) return;
+                startDrag(event, item.id, index, 6);
+              }}
+              className={cn('group relative select-none', { 'z-10 rounded-md bg-raised shadow-float': drag?.id === item.id })}
+              style={drag?.id === item.id ? { transform: `translateY(${drag.offset}px)` } : undefined}
+            >
               <button
                 type="button"
                 data-item={item.id}
                 aria-current={selected ? 'true' : undefined}
                 aria-label={`${index + 1}. ${item.sourceName}, ${statusText(item)}`}
-                aria-keyshortcuts="F2"
+                aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"
                 onClick={() => dispatch({ type: 'selectItem', id: item.id })}
                 onKeyDown={(event) => {
+                  if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                    // Alt + arrows move the image in the queue; focus stays on it.
+                    event.preventDefault();
+                    const target = index + (event.key === 'ArrowUp' ? -1 : 1);
+                    if (target < 0 || target >= state.items.length) return;
+                    moveItem(item.id, target);
+                    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-item="${item.id}"]`)?.focus());
+                    return;
+                  }
                   if (event.key !== 'F2') return;
                   event.preventDefault();
                   setRenaming(item.id);
@@ -209,6 +238,9 @@ export const QueuePanel = () => {
             </li>
           );
         })}
+        {drag && drag.indicator !== null ? (
+          <li aria-hidden="true" className="pointer-events-none absolute inset-x-2 z-20 h-0.5 -translate-y-1/2 rounded-full bg-accent" style={{ top: drag.indicator }} />
+        ) : null}
       </ul>
       {state.items.length > 1 && selectedItem ? (
         <div className="shrink-0 border-t border-line p-2">

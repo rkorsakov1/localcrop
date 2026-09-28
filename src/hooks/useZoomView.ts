@@ -36,13 +36,16 @@ type Options = {
   memoryKey: string;
   /** Primary-button drags that should pan instead of reaching the editor (middle button and Space+drag always pan). */
   panWithPrimary?: (event: PointerEvent) => boolean;
+  /** A second finger turned a touch into a pinch: the editor should drop what the first finger started. */
+  onPinchStart?: () => void;
 };
 
 /**
  * Zoom and pan for a stage, like other image editors: Ctrl/⌘ + wheel or pinch zooms at the pointer,
- * the wheel pans once zoomed in, Ctrl/⌘ + = / − / 0 zoom from the keyboard, and Space+drag or a middle-button drag pans.
+ * the wheel pans once zoomed in, Ctrl/⌘ + = / − / 0 zoom from the keyboard, Space+drag or a middle-button drag pans,
+ * and on touch screens two fingers pinch to zoom and drag to pan.
  */
-export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image, padding = 24, memoryKey, panWithPrimary }: Options) => {
+export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image, padding = 24, memoryKey, panWithPrimary, onPinchStart }: Options) => {
   const [keyed, setKeyed] = useState(() => ({ key: memoryKey, state: remembered.get(memoryKey) ?? FIT }));
   if (keyed.key !== memoryKey) setKeyed({ key: memoryKey, state: remembered.get(memoryKey) ?? FIT });
   const state = keyed.key === memoryKey ? keyed.state : (remembered.get(memoryKey) ?? FIT);
@@ -53,8 +56,8 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
   const zoom = state.zoom === 'fit' ? fitted : state.zoom;
 
   // Handlers attached once read the latest values from here.
-  const latest = useRef({ image, container, devicePixelRatio, padding, fitted, zoom, state, memoryKey, panWithPrimary });
-  latest.current = { image, container, devicePixelRatio, padding, fitted, zoom, state, memoryKey, panWithPrimary };
+  const latest = useRef({ image, container, devicePixelRatio, padding, fitted, zoom, state, memoryKey, panWithPrimary, onPinchStart });
+  latest.current = { image, container, devicePixelRatio, padding, fitted, zoom, state, memoryKey, panWithPrimary, onPinchStart };
 
   useEffect(() => {
     if (state === FIT) remembered.delete(memoryKey);
@@ -72,31 +75,50 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
 
   const apply = useCallback((next: ZoomState) => setKeyed({ key: latest.current.memoryKey, state: next }), []);
 
+  const clampZoom = useCallback((target: number) => {
+    const fitValue = latest.current.fitted;
+    return Math.min(Math.max(MAX_ZOOM, fitValue), Math.max(Math.min(fitValue / 2, 1), target));
+  }, []);
+
+  /** The image point (source px) currently under `at` (container px). */
+  const sourceAt = useCallback((at: Point): Point => {
+    const { image: size, container: box, devicePixelRatio: ratio, zoom: current, state: now } = latest.current;
+    const scale = current / ratio;
+    const pan = now.zoom === 'fit' ? { x: 0, y: 0 } : now.pan;
+    return {
+      x: (at.x - (box.width - size.width * scale) / 2 - pan.x) / scale,
+      y: (at.y - (box.height - size.height * scale) / 2 - pan.y) / scale,
+    };
+  }, []);
+
+  /** Zooms to `zoomValue` with image point `source` shown at `at` (container px). */
+  const place = useCallback(
+    (zoomValue: number, source: Point, at: Point) => {
+      const { image: size, container: box, devicePixelRatio: ratio } = latest.current;
+      const scale = zoomValue / ratio;
+      const pan = {
+        x: at.x - source.x * scale - (box.width - size.width * scale) / 2,
+        y: at.y - source.y * scale - (box.height - size.height * scale) / 2,
+      };
+      apply({ zoom: zoomValue, pan: clampPan(pan, zoomValue) });
+    },
+    [apply, clampPan],
+  );
+
   /** Zooms to `target`, keeping the image point under `anchor` (container px; default: the center) in place. */
   const zoomTo = useCallback(
     (target: number, anchor?: Point) => {
-      const { image: size, container: box, devicePixelRatio: ratio, fitted: fitValue, zoom: current, state: now } = latest.current;
+      const { container: box, fitted: fitValue } = latest.current;
       if (box.width === 0) return;
-      const next = Math.min(Math.max(MAX_ZOOM, fitValue), Math.max(Math.min(fitValue / 2, 1), target));
+      const next = clampZoom(target);
       if (Math.abs(next - fitValue) / fitValue < 0.01) {
         apply(FIT);
         return;
       }
       const at = anchor ?? { x: box.width / 2, y: box.height / 2 };
-      const scale = current / ratio;
-      const pan = now.zoom === 'fit' ? { x: 0, y: 0 } : now.pan;
-      const offsetX = (box.width - size.width * scale) / 2 + pan.x;
-      const offsetY = (box.height - size.height * scale) / 2 + pan.y;
-      const sourceX = (at.x - offsetX) / scale;
-      const sourceY = (at.y - offsetY) / scale;
-      const nextScale = next / ratio;
-      const nextPan = {
-        x: at.x - sourceX * nextScale - (box.width - size.width * nextScale) / 2,
-        y: at.y - sourceY * nextScale - (box.height - size.height * nextScale) / 2,
-      };
-      apply({ zoom: next, pan: clampPan(nextPan, next) });
+      place(next, sourceAt(at), at);
     },
-    [apply, clampPan],
+    [apply, clampZoom, place, sourceAt],
   );
 
   const panBy = useCallback(
@@ -148,7 +170,45 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
       panBy(-dx * unit, -dy * unit);
     };
 
+    // Two-finger pinch: zooms around the midpoint, and moving both fingers pans.
+    const touches = new Map<number, Point>();
+    /** Fingers that took part in a pinch; their events stay away from the editor until they lift. */
+    const consumed = new Set<number>();
+    let pinch: { ids: [number, number]; distance: number; zoom: number; source: Point } | null = null;
+    const local = (event: PointerEvent): Point => {
+      const rect = element.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    };
+    const pinchGeometry = (): { mid: Point; distance: number } | null => {
+      if (!pinch) return null;
+      const a = touches.get(pinch.ids[0]);
+      const b = touches.get(pinch.ids[1]);
+      if (!a || !b) return null;
+      return { mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+    };
+
+    const handleTouchDown = (event: PointerEvent): boolean => {
+      if (event.pointerType !== 'touch') return false;
+      touches.set(event.pointerId, local(event));
+      if (pinch || touches.size !== 2) return pinch !== null;
+      const [first, second] = [...touches.keys()] as [number, number];
+      pinch = { ids: [first, second], distance: 1, zoom: latest.current.zoom, source: { x: 0, y: 0 } };
+      const geometry = pinchGeometry();
+      if (!geometry) return false;
+      pinch = { ...pinch, distance: geometry.distance, source: sourceAt(geometry.mid) };
+      consumed.add(first);
+      consumed.add(second);
+      latest.current.onPinchStart?.();
+      element.setPointerCapture(event.pointerId);
+      return true;
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
+      if (handleTouchDown(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const primaryPans = event.button === 0 && (spaceHeld || (latest.current.panWithPrimary?.(event) ?? false));
       if (event.button !== 1 && !primaryPans) return;
       // Before the editor sees it: no brush stroke or crop drag starts.
@@ -160,6 +220,13 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (touches.has(event.pointerId)) touches.set(event.pointerId, local(event));
+      if (consumed.has(event.pointerId)) {
+        event.stopPropagation();
+        const geometry = pinchGeometry();
+        if (pinch && geometry) place(clampZoom((pinch.zoom * geometry.distance) / pinch.distance), pinch.source, geometry.mid);
+        return;
+      }
       if (drag?.pointerId !== event.pointerId) return;
       event.stopPropagation();
       panBy(event.clientX - drag.x, event.clientY - drag.y);
@@ -167,6 +234,18 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
     };
 
     const handlePointerUp = (event: PointerEvent) => {
+      touches.delete(event.pointerId);
+      if (consumed.has(event.pointerId)) {
+        event.stopPropagation();
+        consumed.delete(event.pointerId);
+        if (pinch?.ids.includes(event.pointerId)) {
+          pinch = null;
+          // Close enough to "fit" snaps back to it, as the buttons and wheel do.
+          const { zoom: current, fitted: fitValue } = latest.current;
+          if (Math.abs(current - fitValue) / fitValue < 0.03) apply(FIT);
+        }
+        return;
+      }
       if (drag?.pointerId !== event.pointerId) return;
       event.stopPropagation();
       drag = null;
@@ -245,7 +324,7 @@ export const useZoomView = (containerRef: RefObject<HTMLElement | null>, { image
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [containerRef, zoomTo, panBy, step, apply]);
+  }, [containerRef, zoomTo, panBy, step, apply, place, clampZoom, sourceAt]);
 
   const controls: ZoomControls = { zoom, isFit: state.zoom === 'fit', zoomIn, zoomOut, fit, actualSize, setZoom: zoomTo, panMode };
   return { view, container, devicePixelRatio, controls };

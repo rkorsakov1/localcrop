@@ -133,7 +133,8 @@ export const SettingsForm = () => {
       <div className="space-y-2">
         <PresetSelect
           value={presetId}
-          presets={orderedPresets(state.presets, state.presetOrder)}
+          // Hidden built-ins stay out of the menu, unless this image uses one.
+          presets={orderedPresets(state.presets, state.presetOrder).filter((preset) => preset.id === presetId || !state.prefs.hiddenPresets.includes(preset.id))}
           onManage={() => setManagerOpen(true)}
           onChange={(id) => {
             if (selectedItem) dispatch({ type: 'setItemPreset', id: selectedItem.id, presetId: id });

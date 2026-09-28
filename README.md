@@ -30,7 +30,7 @@ Most "online image tools" upload your photos to a server. LocalCrop is a static 
 
 **Edit**
 - Crop with a locked aspect ratio, or unlock it for a free-form crop that keeps your selection; snap to common ratios, <kbd>Shift</kbd>+drag to keep one; rotate, flip, rule of thirds, fit-and-pad.
-- **Zoom and pan** like other editors: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll or pinch, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>, <kbd>Space</kbd>+drag.
+- **Zoom and pan** like other editors: <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll or pinch, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>−</kbd>/<kbd>0</kbd>, <kbd>Space</kbd>+drag, two-finger pinch on phones.
 - **Retouch:** paint over an object and it's filled from its surroundings as soon as you let go, with a smooth fill that recreates gradients and soft shadows.
 - **Background removal** with an on-device model (ISNet), with live Restore/Erase brushes and an optional background color.
 - **Undo everything:** every crop, setting and brush stroke is its own step.
@@ -38,8 +38,8 @@ Most "online image tools" upload your photos to a server. LocalCrop is a static 
 **Export**
 - MozJPEG, WebP, AVIF and OxiPNG encoders, and **PDF** (a JPEG page sized to the image). The size you see is the size of the file you download.
 - **Target size:** "under 200 KB" finds the best quality that fits.
-- Presets for YouTube, Open Graph, 16:9, 1:1, 4:5, 9:16 and original size, plus your own, shareable as a link, in the order you drag them into.
-- Batch export as a ZIP, as **one multi-page PDF**, or straight into a folder, with filename templates (and images you can rename).
+- Presets for YouTube, Open Graph, 16:9, 1:1, 4:5, 9:16 and original size, plus your own, shareable as a link, in the order you drag them into; hide the built-ins you never use.
+- Batch export as a ZIP, as **one multi-page PDF** (drag images into page order), or straight into a folder, with filename templates (and images you can rename).
 - EXIF, GPS and other metadata never reach the output, because it's rebuilt from pixels.
 
 **Everywhere**

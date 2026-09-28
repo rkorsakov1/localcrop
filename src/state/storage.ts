@@ -1,4 +1,4 @@
-import { BUILTIN_PRESETS, findPreset } from '../lib/presets';
+import { BUILTIN_PRESETS, findPreset, isBuiltinPreset } from '../lib/presets';
 import { createPresetFile, validatePresetFile } from '../lib/presetValidation';
 import { initialLanguage } from '../i18n';
 import type { Preset } from '../lib/types';
@@ -8,7 +8,7 @@ export const STORAGE_KEY = 'localcrop:presets:v1';
 
 export type PersistedState = { presets: Preset[]; presetOrder: string[]; lastPresetId: string; prefs: Prefs };
 
-const DEFAULT_PREFS: Prefs = { showThirds: true, theme: 'system', language: 'en', lifetime: { bytes: 0, count: 0 }, fillMethod: 'flat' };
+const DEFAULT_PREFS: Prefs = { showThirds: true, theme: 'system', language: 'en', lifetime: { bytes: 0, count: 0 }, fillMethod: 'flat', hiddenPresets: [] };
 
 const readLifetime = (raw: unknown): Prefs['lifetime'] => {
   if (typeof raw !== 'object' || raw === null) return { bytes: 0, count: 0 };
@@ -26,6 +26,7 @@ const readPrefs = (raw: unknown): Prefs => {
     language: initialLanguage(record.language),
     lifetime: readLifetime(record.lifetime),
     fillMethod: record.fillMethod === 'smooth' ? 'smooth' : 'flat',
+    hiddenPresets: Array.isArray(record.hiddenPresets) ? record.hiddenPresets.filter((id): id is string => typeof id === 'string' && isBuiltinPreset(id)) : [],
   };
 };
 

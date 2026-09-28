@@ -102,7 +102,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const blob = file instanceof File ? file : file.blob;
           const name = file.name;
           // Rendering pages (and the first download of the PDF reader) can take a moment.
-          if (blob.type === 'application/pdf' || /\.pdf$/i.test(name)) notify('info', messages().queue.readingPdf(name));
+          const progressId = blob.type === 'application/pdf' || /\.pdf$/i.test(name) ? crypto.randomUUID() : null;
+          if (progressId) dispatch({ type: 'notify', notice: { id: progressId, tone: 'info', message: messages().queue.readingPdf(name), persistent: true } });
           try {
             const result = await decodeFile(blob, name);
             if (result.pdfPages !== undefined && result.pdfPages > MAX_PDF_PAGES) {
@@ -112,6 +113,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           } catch (error) {
             failures.push({ name, message: errorText(error) });
             return [];
+          } finally {
+            if (progressId) dispatch({ type: 'dismissNotice', id: progressId });
           }
         }),
       );

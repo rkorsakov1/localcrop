@@ -12,6 +12,8 @@ export const ShortcutsDialog = ({ open, onClose }: { open: boolean; onClose: () 
     [[[MOD, 'S'], [s.enter]], s.download],
     [[[MOD, '⇧', 'C']], s.copy],
     [[['N'], ['P']], s.nextPrevious],
+    [[['Alt', '↑'], ['Alt', '↓']], s.reorder],
+    [[['F2']], s.rename],
     [[['C'], ['E'], ['B'], ['V']], s.modes],
     [[['R']], s.resetCrop],
     [[['←↑↓→']], s.nudge],

@@ -241,6 +241,19 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
               onBrushChange={setBrush}
               version={version}
               onStrokeEnd={handleStrokeEnd}
+              onStrokeAbort={(rect) => {
+                // Put back the committed mask where the cancelled stroke painted.
+                const source = synced.current?.bitmap ?? cutout.mask;
+                const x = Math.max(0, Math.floor(rect.x));
+                const y = Math.max(0, Math.floor(rect.y));
+                const width = Math.min(mask.width, Math.ceil(rect.x + rect.width)) - x;
+                const height = Math.min(mask.height, Math.ceil(rect.y + rect.height)) - y;
+                if (width <= 0 || height <= 0) return;
+                const context = mask.getContext('2d');
+                context?.clearRect(x, y, width, height);
+                context?.drawImage(source, x, y, width, height, x, y, width, height);
+                setVersion((value) => value + 1);
+              }}
               label={t.background.cutout}
               zoomKey={item.id}
             />

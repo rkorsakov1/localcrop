@@ -16,6 +16,8 @@ export type Prefs = {
   language: Language;
   lifetime: { bytes: number; count: number };
   fillMethod: FillMethod;
+  /** Built-in presets left out of the preset menu. */
+  hiddenPresets: string[];
 };
 
 export type Notice = {
@@ -53,6 +55,8 @@ export type AppAction =
   | { type: 'addItems'; items: NewItem[] }
   | { type: 'removeItem'; id: string }
   | { type: 'renameItem'; id: string; name: string }
+  /** Moves an image to `index` in the queue (the page order of "One PDF", and {i} in filenames). */
+  | { type: 'moveItem'; id: string; index: number }
   | { type: 'selectItem'; id: string }
   | { type: 'selectRelative'; offset: 1 | -1 }
   | { type: 'setMode'; mode: Mode }
@@ -180,6 +184,16 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       if (!name) return state;
       // The name feeds {name} in the filename template; the output itself is unchanged.
       return updateItem(state, action.id, (item) => (item.sourceName === name ? item : { ...item, sourceName: name }));
+    }
+
+    case 'moveItem': {
+      const from = state.items.findIndex((item) => item.id === action.id);
+      const to = Math.min(state.items.length - 1, Math.max(0, action.index));
+      if (from === -1 || from === to) return state;
+      const items = [...state.items];
+      const [moved] = items.splice(from, 1);
+      items.splice(to, 0, moved as QueueItem);
+      return { ...state, items };
     }
 
     case 'selectItem':

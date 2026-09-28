@@ -105,6 +105,7 @@ const UNDOABLE: ReadonlySet<AppAction['type']> = new Set<AppAction['type']>([
   'addItems',
   'removeItem',
   'renameItem',
+  'moveItem',
   'setCrop',
   'setTransform',
   'setItemPreset',

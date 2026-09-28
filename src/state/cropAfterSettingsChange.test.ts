@@ -19,6 +19,16 @@ describe('cropAfterSettingsChange', () => {
     expect(cropAfterSettingsChange(item(manual), youtube, { ...youtube, fit: 'free' })).toBe(manual);
   });
 
+  it('reshapes a free crop to a newly typed W × H, so the output is exactly that size', () => {
+    const free = { ...youtube, fit: 'free' as const };
+    const manual = { x: 100, y: 100, width: 800, height: 450 };
+    const crop = cropAfterSettingsChange(item(manual), free, { ...free, width: 450, height: 250 }) as NonNullable<QueueItem['crop']>;
+    expect(crop.width / crop.height).toBeCloseTo(1.8);
+    expect(crop.x + crop.width / 2).toBeCloseTo(500);
+    const auto = cropAfterSettingsChange(item(null), free, { ...free, height: 1280 }) as NonNullable<QueueItem['crop']>;
+    expect(auto).toEqual({ x: 250, y: 0, width: 1500, height: 1500 });
+  });
+
   it('reshapes a manual crop around its center when the ratio changes', () => {
     const manual = { x: 100, y: 100, width: 800, height: 450 };
     const crop = cropAfterSettingsChange(item(manual), youtube, { ...youtube, height: 800 }) as NonNullable<QueueItem['crop']>;

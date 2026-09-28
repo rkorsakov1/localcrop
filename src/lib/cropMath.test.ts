@@ -130,6 +130,14 @@ describe('resolveOutputGeometry', () => {
     expect([whole.outWidth, whole.outHeight]).toEqual([960, 720]);
   });
 
+  it('free crop snaps to W × H when it misses only by rounding', () => {
+    const free = { ...cover(450, 250), fit: 'free' as const };
+    const nearly = resolveOutputGeometry({ width: 4000, height: 3000 }, { x: 0, y: 0, width: 1253, height: 697 }, free);
+    expect([nearly.outWidth, nearly.outHeight]).toEqual([450, 250]);
+    const off = resolveOutputGeometry({ width: 4000, height: 3000 }, { x: 0, y: 0, width: 1250, height: 698 }, free);
+    expect([off.outWidth, off.outHeight]).toEqual([448, 250]);
+  });
+
   it('derives height from width and crop aspect', () => {
     const geometry = resolveOutputGeometry({ width: 4000, height: 3000 }, null, cover(1600, null));
     expect([geometry.outWidth, geometry.outHeight]).toEqual([1600, 1200]);
@@ -233,13 +241,21 @@ describe('transformedToSource', () => {
 describe('adaptCropToAspect', () => {
   const bounds = { width: 4000, height: 3000 };
 
-  it('reshapes around the same center with about the same area', () => {
+  it('reshapes around the same center, keeping its share of the largest box that fits', () => {
     const crop = { x: 1000, y: 1000, width: 1600, height: 900 };
     const next = adaptCropToAspect(crop, 16 / 10, bounds);
     expect(next.width / next.height).toBeCloseTo(1.6);
     expect(next.x + next.width / 2).toBeCloseTo(1800);
     expect(next.y + next.height / 2).toBeCloseTo(1450);
-    expect(next.width * next.height).toBeCloseTo(1600 * 900);
+    expect(next.width).toBeCloseTo(1600); // 40% of the widest 16:9 and of the widest 16:10
+  });
+
+  it('keeps a full-size selection full-size through an odd in-between ratio', () => {
+    const full = { x: 0, y: 375, width: 4000, height: 2250 };
+    const tall = adaptCropToAspect(full, 450 / 720, bounds);
+    const back = adaptCropToAspect(tall, 450 / 250, bounds);
+    expect(back.width).toBeCloseTo(4000);
+    expect(back.height).toBeCloseTo(4000 / 1.8);
   });
 
   it('shrinks to fit and stays inside the image', () => {

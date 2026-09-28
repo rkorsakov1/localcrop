@@ -13,11 +13,11 @@ const context = {
 
 describe('renderFilename', () => {
   it('renders the default template', () => {
-    expect(renderFilename(DEFAULT_FILENAME_TEMPLATE, context)).toBe('screenshot-2024-05-01-at-10-00-00-1280x720.jpg');
+    expect(renderFilename(DEFAULT_FILENAME_TEMPLATE, context)).toBe('Screenshot-2024-05-01-at-10-00-00-1280x720.jpg');
   });
 
   it('pads the index to the queue length', () => {
-    expect(renderFilename('{i}-{preset}.{ext}', context)).toBe('003-youtube-thumbnail.jpg');
+    expect(renderFilename('{i}-{preset}.{ext}', context)).toBe('003-YouTube-thumbnail.jpg');
   });
 
   it('keeps unknown tokens literally', () => {

@@ -1,13 +1,12 @@
 /**
- * Lowercase, ASCII-only, dash-separated. Diacritics are stripped; anything
+ * ASCII-only, dash-separated, case kept. Diacritics are stripped; anything
  * else that isn't a letter or digit becomes a single dash.
  */
 export const slugify = (input: string, fallback = 'image'): string => {
   const slug = input
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^A-Za-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || fallback;
 };

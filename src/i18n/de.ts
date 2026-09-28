@@ -115,6 +115,8 @@ export const de: Messages = {
     preset: 'Vorlage',
     manage: 'Verwalten',
     modified: 'Für dieses Bild geändert',
+    custom: 'Benutzerdefiniert',
+    basedOn: (preset) => `Basiert auf ${preset}`,
     changes: (count) => plural(count, 'Änderung', 'Änderungen'),
     readOnly: 'Mitgelieferte Vorlagen sind schreibgeschützt. Nutze „Als neue speichern“.',
     saveToPreset: 'In Vorlage speichern',
@@ -254,7 +256,7 @@ export const de: Messages = {
       {
         title: 'Zuschneiden',
         items: [
-          ['Vorlagen', 'legen Ausgabegröße und Format fest; jede Einstellung lässt sich nur für dieses Bild ändern.'],
+          ['Vorlagen', 'legen Ausgabegröße und Format fest; jede Einstellung lässt sich nur für dieses Bild ändern. B und H rechnen mit, z. B. 1200/2.'],
           ['Seitenverhältnis lösen', '(Kettensymbol) für einen freien Zuschnitt, der deine Auswahl behält; das Menü „Verhältnis“ rastet auf 16:9, 4:5 … ein.'],
           ['Umschalt + Ziehen', 'an einer Ecke behält das Verhältnis. Drehen, spiegeln oder einpassen statt zuschneiden.'],
           ['Zoom:', 'Strg + Mausrad oder zwei Finger; Leertaste + Ziehen oder zwei Finger zum Verschieben.'],

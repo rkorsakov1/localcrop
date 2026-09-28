@@ -129,6 +129,11 @@ export const cropAfterSettingsChange = (item: QueueItem, before: Preset, after: 
   const beforeAspect = usesCrop(before) ? targetAspect(before) : null;
   const afterAspect = targetAspect(after);
   if (afterAspect === null) {
+    // A new W × H in free mode reshapes the selection to it, so the output comes out at exactly that size.
+    const sizeChanged = before.width !== after.width || before.height !== after.height;
+    if (after.fit === 'free' && after.width && after.height && sizeChanged) {
+      return adaptCropToAspect(item.crop ?? computeAutoCrop(image, beforeAspect), after.width / after.height, image);
+    }
     // Free or one-sided size: keep what was on screen, unless that was the whole image anyway.
     if (item.crop || !usesCrop(before) || beforeAspect === null) return item.crop;
     return computeAutoCrop(image, beforeAspect);

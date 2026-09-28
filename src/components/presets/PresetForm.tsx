@@ -151,7 +151,7 @@ export const PresetForm = ({ preset, item, queueLength, onChange }: PresetFormPr
           {t.form.sizeFit}
         </h3>
         <div className="flex items-center gap-1">
-          <NumberField label={t.form.width} prefix={t.form.widthPrefix} suffix="px" placeholder={t.form.auto} value={preset.width} onChange={(width) => onChange({ width })} />
+          <NumberField live label={t.form.width} prefix={t.form.widthPrefix} suffix="px" placeholder={t.form.auto} value={preset.width} onChange={(width) => onChange({ width })} />
           <button
             type="button"
             aria-pressed={bothDimensions && !free}
@@ -167,7 +167,7 @@ export const PresetForm = ({ preset, item, queueLength, onChange }: PresetFormPr
           >
             <Icon name={free ? 'unlink' : 'link'} />
           </button>
-          <NumberField label={t.form.height} prefix={t.form.heightPrefix} suffix="px" placeholder={t.form.auto} value={preset.height} onChange={(height) => onChange({ height })} />
+          <NumberField live label={t.form.height} prefix={t.form.heightPrefix} suffix="px" placeholder={t.form.auto} value={preset.height} onChange={(height) => onChange({ height })} />
         </div>
         {free ? (
           <p className="flex min-h-9 items-center rounded-[9px] bg-sunken px-3 text-xs text-ink-2 max-lg:min-h-11">

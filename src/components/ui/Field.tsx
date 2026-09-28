@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { evaluateArithmetic } from '../../lib/arithmetic';
 import { cn } from '../../lib/cn';
 import { focusRing } from './Button';
 
@@ -38,31 +39,57 @@ type NumberFieldProps = {
   /** Short visible prefix inside the input (e.g. "W"); the full label stays the accessible name. */
   prefix?: string;
   suffix?: string;
+  /** Apply the value shortly after typing stops, not only on blur/Enter. */
+  live?: boolean;
 };
 
-/** Integer input where an empty value means null ("auto"). Commits on blur/Enter so typing isn't interrupted. */
-export const NumberField = ({ label, value, onChange, min = 1, max = 16384, placeholder = 'auto', hint, disabled, prefix, suffix }: NumberFieldProps) => {
+/** How long typing has to pause before a live field applies its value. */
+const LIVE_DELAY_MS = 450;
+
+/**
+ * Integer input where an empty value means null ("auto"). Accepts arithmetic ("1200/2", "640*2+20").
+ * Commits on blur/Enter so typing isn't interrupted, or also after a pause when `live`.
+ */
+export const NumberField = ({ label, value, onChange, min = 1, max = 16384, placeholder = 'auto', hint, disabled, prefix, suffix, live = false }: NumberFieldProps) => {
   const id = useId();
   const [draft, setDraft] = useState(value === null ? '' : String(value));
+  const liveTimer = useRef<number | undefined>(undefined);
+
+  const parse = (text: string): number | null => {
+    const result = evaluateArithmetic(text);
+    return result === null ? null : Math.min(max, Math.max(min, Math.round(result)));
+  };
 
   useEffect(() => {
-    setDraft(value === null ? '' : String(value));
+    // Keep what's typed ("1200/2") while it already stands for this value.
+    setDraft((current) => (current.trim() !== '' && parse(current) === value ? current : value === null ? '' : String(value)));
   }, [value]);
 
+  useEffect(() => () => window.clearTimeout(liveTimer.current), []);
+
   const commit = () => {
+    window.clearTimeout(liveTimer.current);
     const trimmed = draft.trim();
     if (trimmed === '') {
       if (value !== null) onChange(null);
       return;
     }
-    const parsed = Math.round(Number(trimmed));
-    if (!Number.isFinite(parsed)) {
+    const parsed = parse(trimmed);
+    if (parsed === null) {
       setDraft(value === null ? '' : String(value));
       return;
     }
-    const clamped = Math.min(max, Math.max(min, parsed));
-    setDraft(String(clamped));
-    if (clamped !== value) onChange(clamped);
+    setDraft(String(parsed));
+    if (parsed !== value) onChange(parsed);
+  };
+
+  const edit = (text: string) => {
+    setDraft(text);
+    if (!live) return;
+    window.clearTimeout(liveTimer.current);
+    const parsed = parse(text);
+    if (parsed === null || parsed === value) return;
+    liveTimer.current = window.setTimeout(() => onChange(parsed), LIVE_DELAY_MS);
   };
 
   return (
@@ -86,19 +113,19 @@ export const NumberField = ({ label, value, onChange, min = 1, max = 16384, plac
           id={id}
           type="text"
           inputMode="numeric"
-          pattern="[0-9]*"
           enterKeyHint="done"
           autoComplete="off"
           placeholder={placeholder}
           value={draft}
           disabled={disabled}
           className="w-full min-w-0 bg-transparent text-ink outline-none placeholder:text-ink-3 max-lg:text-base"
-          onChange={(event) => setDraft(event.target.value.replace(/[^\d]/g, ''))}
+          onChange={(event) => edit(event.target.value.replace(/[^\d\s.,+\-*/×÷()]/g, ''))}
           onBlur={commit}
           onKeyDown={(event) => {
             if (event.key === 'Enter') commit();
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               event.preventDefault();
+              window.clearTimeout(liveTimer.current);
               const base = value ?? 0;
               const next = Math.min(max, Math.max(min, base + (event.key === 'ArrowUp' ? 1 : -1) * (event.shiftKey ? 10 : 1)));
               onChange(next);

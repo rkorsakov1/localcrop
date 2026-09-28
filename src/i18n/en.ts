@@ -113,6 +113,8 @@ export const en = {
     preset: 'Preset',
     manage: 'Manage',
     modified: 'Modified for this image',
+    custom: 'Custom',
+    basedOn: (preset: string) => `Based on ${preset}`,
     changes: (count: number) => plural(count, 'change', 'changes'),
     readOnly: 'Built-in presets are read-only. Use “Save as new”.',
     saveToPreset: 'Save to preset',
@@ -252,7 +254,7 @@ export const en = {
       {
         title: 'Crop',
         items: [
-          ['Presets', 'set the output size and format; change any setting for just this image.'],
+          ['Presets', 'set the output size and format; change any setting for just this image. W and H take arithmetic like 1200/2.'],
           ['Unlink W × H', '(the chain icon) for a free crop that keeps your selection; the Ratio menu snaps to 16:9, 4:5, …'],
           ['Shift + drag', 'a corner to keep the ratio. Rotate, flip, or fit and pad instead of cropping.'],
           ['Zoom:', 'Ctrl + scroll or pinch; Space + drag or two fingers to pan.'],

@@ -116,15 +116,16 @@ export const scaleCropAroundCenter = (crop: CropRect, factor: number, bounds: Si
 };
 
 /**
- * Reshapes a crop to `aspect` around its center, keeping roughly the same area, then fits it
- * inside the image. Used when the target ratio changes, so the selection doesn't jump away.
+ * Reshapes a crop to `aspect` around its center, keeping its size relative to the largest box of
+ * its shape that fits the image. Used when the target ratio changes, so the selection doesn't jump
+ * away, and a full-size selection stays full-size through odd in-between ratios (typing W, then H).
  */
 export const adaptCropToAspect = (crop: CropRect, aspect: number, bounds: Size): CropRect => {
-  let width = Math.sqrt(crop.width * crop.height * aspect);
+  const largestWidth = (ratio: number) => Math.min(bounds.width, bounds.height * ratio);
+  const cropAspect = crop.width / crop.height;
+  const share = Math.min(1, crop.width / largestWidth(cropAspect));
+  let width = largestWidth(aspect) * share;
   let height = width / aspect;
-  const shrink = Math.min(1, bounds.width / width, bounds.height / height);
-  width *= shrink;
-  height *= shrink;
   const minWidth = Math.min(Math.max(MIN_CROP_SIZE, MIN_CROP_SIZE * aspect), bounds.width, bounds.height * aspect);
   if (width < minWidth) {
     width = minWidth;
@@ -237,6 +238,11 @@ export const resolveOutputGeometry = (
     const fitScale = Math.min(width / sourceRect.width, height / sourceRect.height);
     requestedWidth = atLeastOne(sourceRect.width * fitScale);
     requestedHeight = atLeastOne(sourceRect.height * fitScale);
+    // A crop shaped to W × H can miss by a pixel once rounded to whole source pixels; snap to the exact size.
+    if (Math.abs(requestedWidth - width) <= 1 && Math.abs(requestedHeight - height) <= 1) {
+      requestedWidth = width;
+      requestedHeight = height;
+    }
   } else if (width) {
     requestedWidth = width;
     requestedHeight = atLeastOne((width * sourceRect.height) / sourceRect.width);

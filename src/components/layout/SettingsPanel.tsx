@@ -22,9 +22,18 @@ export const TOAST_ANCHOR_ID = 'toast-anchor';
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
-type PresetSelectProps = { value: string; presets: readonly Preset[]; onChange: (id: string) => void; onManage: () => void };
+type PresetSelectProps = {
+  value: string;
+  presets: readonly Preset[];
+  onChange: (id: string) => void;
+  onManage: () => void;
+  /** The image has its own size: the menu reads "Custom" until a preset is picked again. */
+  custom: boolean;
+};
 
-const PresetSelect = ({ value, presets, onChange, onManage }: PresetSelectProps) => {
+const CUSTOM_VALUE = 'custom';
+
+const PresetSelect = ({ value, presets, onChange, onManage, custom }: PresetSelectProps) => {
   const t = useT();
   return (
   <div className="flex items-center gap-2">
@@ -32,7 +41,12 @@ const PresetSelect = ({ value, presets, onChange, onManage }: PresetSelectProps)
       {t.settings.preset}
     </label>
     <div className="relative min-w-0 flex-1">
-      <select id="preset-select" value={value} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, 'appearance-none pr-8 font-medium')}>
+      <select id="preset-select" value={custom ? CUSTOM_VALUE : value} onChange={(event) => onChange(event.target.value)} className={cn(inputClass, 'appearance-none pr-8 font-medium')}>
+        {custom ? (
+          <option value={CUSTOM_VALUE} disabled>
+            {t.settings.custom}
+          </option>
+        ) : null}
         {/* One list in the order set in Manage presets. */}
         {presets.map((preset) => (
           <option key={preset.id} value={preset.id}>
@@ -49,7 +63,7 @@ const PresetSelect = ({ value, presets, onChange, onManage }: PresetSelectProps)
   );
 };
 
-const ModifiedBar = ({ item, onSaveAsNew }: { item: QueueItem; onSaveAsNew: () => void }) => {
+const ModifiedBar = ({ item, basedOn, onSaveAsNew }: { item: QueueItem; basedOn: string | null; onSaveAsNew: () => void }) => {
   const { dispatch } = useApp();
   const t = useT();
   const builtin = isBuiltinPreset(item.presetId);
@@ -57,7 +71,7 @@ const ModifiedBar = ({ item, onSaveAsNew }: { item: QueueItem; onSaveAsNew: () =
     <div className="rounded-[9px] bg-raised p-2.5 ring-1 ring-line-strong">
       <p className="mb-2 flex items-center gap-2 text-[13px] font-medium">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-accent" />
-        {t.settings.modified}
+        {basedOn ? t.settings.basedOn(basedOn) : t.settings.modified}
         <span className="truncate text-xs font-normal text-ink-3">· {t.settings.changes(Object.keys(item.overrides).length)}</span>
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -108,6 +122,9 @@ const SaveAsNewForm = ({ item, defaultName, onDone }: { item: QueueItem; default
   );
 };
 
+/** Overrides that give the image its own size (unlinking alone keeps the preset's). */
+const SIZE_KEYS: (keyof Preset)[] = ['width', 'height'];
+
 /** Preset choice, per-image overrides and the "about the output" notes. */
 export const SettingsForm = () => {
   const { state, dispatch, selectedItem, notify } = useApp();
@@ -119,6 +136,7 @@ export const SettingsForm = () => {
   const basePreset = findPreset(state.presets, presetId);
   const preset = selectedItem ? getItemPreset(state, selectedItem) : basePreset;
   const modified = selectedItem !== null && Object.keys(selectedItem.overrides).length > 0;
+  const customSize = selectedItem !== null && SIZE_KEYS.some((key) => key in selectedItem.overrides);
 
   const handleChange = (patch: Partial<Preset>) => {
     if (!selectedItem) {
@@ -135,13 +153,14 @@ export const SettingsForm = () => {
           value={presetId}
           // Hidden built-ins stay out of the menu, unless this image uses one.
           presets={orderedPresets(state.presets, state.presetOrder).filter((preset) => preset.id === presetId || !state.prefs.hiddenPresets.includes(preset.id))}
+          custom={customSize}
           onManage={() => setManagerOpen(true)}
           onChange={(id) => {
             if (selectedItem) dispatch({ type: 'setItemPreset', id: selectedItem.id, presetId: id });
             else dispatch({ type: 'applyPresetToAll', presetId: id });
           }}
         />
-        {selectedItem && modified && !savingAsNew ? <ModifiedBar item={selectedItem} onSaveAsNew={() => setSavingAsNew(true)} /> : null}
+        {selectedItem && modified && !savingAsNew ? <ModifiedBar item={selectedItem} basedOn={customSize ? presetLabel(basePreset) : null} onSaveAsNew={() => setSavingAsNew(true)} /> : null}
         {selectedItem && savingAsNew ? (
           <SaveAsNewForm item={selectedItem} defaultName={t.settings.customName(presetLabel(basePreset))} onDone={() => setSavingAsNew(false)} />
         ) : null}

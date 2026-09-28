@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { slugify, stripExtension } from './slugify';
 
 describe('slugify', () => {
-  it('lowercases and dashes', () => {
-    expect(slugify('Hello World!  Again')).toBe('hello-world-again');
+  it('keeps the case and dashes', () => {
+    expect(slugify('Hello World!  Again')).toBe('Hello-World-Again');
   });
 
   it('strips diacritics', () => {
-    expect(slugify('Crème Brûlée')).toBe('creme-brulee');
+    expect(slugify('Crème Brûlée')).toBe('Creme-Brulee');
   });
 
   it('uses the fallback for empty results', () => {
